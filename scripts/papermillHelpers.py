@@ -59,7 +59,8 @@ def gen_run_notebook(
     result_dir: str,
     transition_timeout: int,
     shared_params: dict | None = None,
-    skip_failed_test: bool = False
+    skip_failed_test: bool = False,
+    exclude_notebooks: list | None = None
 ) -> Callable[[str, str, dict | None, str | None], str]:
     """
     一部の引数を固定した run_notebook 関数を生成する。
@@ -68,6 +69,7 @@ def gen_run_notebook(
     :param transition_timeout: 画面表示を伴うステップにおける、画面表示完了のタイムアウト時間
     :param shared_params: Coordinatorの中で共通のパラメータ
     :param skip_failed_test: base_notebookの実行に失敗したとき、処理を続行する(True)か例外を投げて停止する(False、デフォルト)か
+    :param exclude_notebooks: スキップするNotebookのリスト
     :return: run_notebook(result_dir, base_notebook, extra_params, optional_result_id) を受け取る関数
     """
 
@@ -76,6 +78,10 @@ def gen_run_notebook(
         extra_params: dict | None = None,
         optional_result_id: str | None = None,
     ) -> str:
+        # Check if notebook should be excluded
+        if exclude_notebooks and base_notebook in exclude_notebooks:
+            print(f'Skipping excluded notebook: {base_notebook}')
+            return None
 
         return run_notebook(
             result_dir,

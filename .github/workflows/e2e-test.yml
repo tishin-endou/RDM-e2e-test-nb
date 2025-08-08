@@ -28,6 +28,33 @@ jobs:
   e2e-test:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group:
+          - name: user
+            display_name: "User Tests"
+            skip_admin: true
+            skip_metadata: false
+          - name: admin
+            display_name: "Admin Tests"
+            skip_admin: false
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            exclude_notebooks: |
+              テスト手順-管理者機能-ログイン可否設定.ipynb
+              テスト手順-管理者機能-ノード管理.ipynb
+              テスト手順-管理者機能-ユーザ管理.ipynb
+              テスト手順-管理者機能-機関設定.ipynb
+              テスト手順-管理者機能-RDMユーザメール.ipynb
+              テスト手順-管理者機能-RDM登録.ipynb
+              テスト手順-管理者機能-アドオン利用制御.ipynb
+              テスト手順-管理者機能-利用統計.ipynb
+              テスト手順-管理者機能-アナウンス.ipynb
+              テスト手順-管理者機能-証跡管理.ipynb
+              テスト手順-管理者機能-NIIストレージのクォータ.ipynb
+    name: E2E ${{ matrix.test-group.display_name }}
 
     steps:
     - name: Checkout test repository
@@ -81,6 +108,12 @@ jobs:
         cp ./api/base/settings/local-dist.py ./api/base/settings/local.py
         cp ./docker-compose-dist.override.yml ./docker-compose.override.yml
         cp ./tasks/local-dist.py ./tasks/local.py
+        
+        # Create admin settings if running admin tests
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          cp ./admin/base/settings/local-dist.py ./admin/base/settings/local.py
+          echo "ALLOWED_HOSTS = ['localhost']" >> ./admin/base/settings/local.py
+        fi
 
     - name: Create docker-compose override for NII Cloud Operation images
       working-directory: RDM-osf.io
@@ -177,8 +210,14 @@ jobs:
     - name: Start supporting services
       working-directory: RDM-osf.io
       run: |
-        # Start supporting services
-        docker-compose up -d mfr wb fakecas sharejs
+        # Start supporting services based on test group
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          # Admin tests don't need mfr and sharejs
+          docker-compose up -d wb fakecas
+        else
+          # User tests need all supporting services
+          docker-compose up -d mfr wb fakecas sharejs
+        fi
         
         # Wait for services to be ready
         echo "Waiting for supporting services to start..."
@@ -190,6 +229,13 @@ jobs:
         # Compile translation files for Japanese locale
         docker-compose run --rm web pybabel compile -d ./website/translations
         echo "Translation files compiled successfully"
+        
+        # Compile translations for admin if needed
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          echo "Compiling translation files for admin services..."
+          docker-compose run --rm web pybabel compile -D django -d ./admin/translations
+          echo "Admin translation files compiled successfully"
+        fi
 
     - name: Build and start assets
       working-directory: RDM-osf.io
@@ -198,18 +244,35 @@ jobs:
         rm -rf ./node_modules || true
         docker-compose up -d assets
         
+        # Start admin_assets if needed for admin tests
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          echo "Starting admin_assets for admin tests..."
+          docker-compose up -d admin_assets
+        fi
+        
         # Wait for assets to build (this can take a while)
         echo "Waiting for assets to build..."
         sleep 120
         
         # Check assets container status
         docker-compose logs --tail 50 assets
+        
+        # Check admin_assets if running admin tests
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          docker-compose logs --tail 50 admin_assets
+        fi
 
     - name: Start main OSF services
       working-directory: RDM-osf.io
       run: |
         # Start the main OSF services
         docker-compose up -d wb_worker worker web api ember_osf_web
+        
+        # Start admin service if needed for admin tests (admin_assets already started)
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          echo "Starting admin service for admin tests..."
+          docker-compose up -d admin
+        fi
         
         # Wait for services to start
         echo "Waiting for main services to start..."
@@ -282,8 +345,17 @@ jobs:
         test_endpoint "OSF API (port 8000)" "http://localhost:8000/v2/"
         test_endpoint "Ember OSF Web (port 4200)" "http://localhost:4200/"
         test_endpoint "WaterButler (port 7777)" "http://localhost:7777/status"
-        test_endpoint "MFR (port 7778)" "http://localhost:7778/status"
         test_endpoint "FakeCAS (port 8080)" "http://localhost:8080/login"
+        
+        # Test MFR only for user tests (not needed for admin)
+        if [ "${{ matrix.test-group.name }}" != "admin" ]; then
+          test_endpoint "MFR (port 7778)" "http://localhost:7778/status"
+        fi
+        
+        # Test admin endpoints if running admin tests
+        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+          test_endpoint "Admin Web (port 8001)" "http://localhost:8001/"
+        fi
 
     - name: Create test users and projects
       working-directory: RDM-osf.io
@@ -347,9 +419,9 @@ jobs:
     - name: Prepare test configuration
       working-directory: e2e-tests
       run: |
-        # Create CI configuration
+        # Create CI configuration based on test group
         cat > ci.config.yaml << 'EOF'
-        # CI Test Configuration
+        # CI Test Configuration - ${{ matrix.test-group.display_name }}
         rdm_url: 'http://localhost:5000/'
         admin_rdm_url: 'http://localhost:8001/'
         
@@ -367,13 +439,14 @@ jobs:
         rdm_project_name_1: '${{ env.PROJECT_NAME_1 }}'
         rdm_project_url_2: 'http://localhost:5000/${{ env.PROJECT_ID_2 }}/'
         
-        # Test settings
+        # Test settings for ${{ matrix.test-group.name }} group
         skip_failed_test: true  # Continue on failure
         transition_timeout: 60000
         skip_preview_check: true
-        skip_default_storage: false
-        skip_metadata: false  # Enable Metadata Test
-        skip_admin: true  # Admin tests might need additional setup
+        skip_default_storage: ${{ matrix.test-group.skip_default_storage || false }}
+        skip_metadata: ${{ matrix.test-group.skip_metadata }}
+        skip_admin: ${{ matrix.test-group.skip_admin }}
+        skip_login: ${{ matrix.test-group.skip_login || false }}
         enable_1gb_file_upload: false
         skip_erad_completion_test: true  # Skip e-Rad completion test in CI
         
@@ -382,8 +455,20 @@ jobs:
         storages_s3: []
         EOF
         
+        # Add exclude_notebooks if specified
+        if [ -n "${{ matrix.test-group.exclude_notebooks }}" ]; then
+          echo "" >> ci.config.yaml
+          echo "# Exclude specific notebooks" >> ci.config.yaml
+          echo "exclude_notebooks:" >> ci.config.yaml
+          echo "${{ matrix.test-group.exclude_notebooks }}" | while read notebook; do
+            if [ -n "$notebook" ]; then
+              echo "  - '$notebook'" >> ci.config.yaml
+            fi
+          done
+        fi
+        
         # Display the generated configuration for debugging
-        echo "Generated CI configuration:"
+        echo "Generated CI configuration for ${{ matrix.test-group.display_name }}:"
         cat ci.config.yaml
 
     - name: Create result directories
@@ -402,7 +487,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: test-results-failed
+        name: test-results-failed-${{ matrix.test-group.name }}
         path: e2e-tests/result-failed/
         retention-days: 30
 
@@ -410,7 +495,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: test-results-full
+        name: test-results-full-${{ matrix.test-group.name }}
         path: e2e-tests/result/
         retention-days: 7
 
@@ -442,6 +527,6 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: docker-compose-logs
+        name: docker-compose-logs-${{ matrix.test-group.name }}
         path: e2e-tests/docker-compose-logs.txt
         retention-days: 7

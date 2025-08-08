@@ -2,7 +2,7 @@ from django.utils import timezone
 from osf.models import OSFUser, Node
 
 test_users = [
-    {'username': 'testuser1@example.com', 'fullname': 'Test User 1', 'password': 'testpass123'},
+    {'username': 'testuser1@example.com', 'fullname': 'Test User 1', 'password': 'testpass123', 'is_superuser': True},
     {'username': 'testuser2@example.com', 'fullname': 'Test User 2', 'password': 'testpass456'},
 ]
 
@@ -22,6 +22,10 @@ for user_data in test_users:
         user.is_registered = True
         user.date_confirmed = timezone.now()
         user.have_email = True
+        # Set superuser if specified
+        if user_data.get('is_superuser', False):
+            user.is_superuser = True
+            user.is_staff = True
         user.save()
         
         # Create email for the user
