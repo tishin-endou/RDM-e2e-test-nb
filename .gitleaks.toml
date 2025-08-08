@@ -26,3 +26,10 @@ regex = '''https?://[^/]*rdm\.nii\.ac\.jp[^\s'"]*'''
 id = "ipv4-address"
 description = "Detects IPv4 addresses"
 regex = '''\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'''
+[rules.allowlist]
+regexes = [
+    '''192\.168\.\d{1,3}\.\d{1,3}''',  # Private network addresses
+    '''127\.0\.0\.1''',                 # Localhost
+    '''0\.0\.0\.0''',                   # All interfaces
+    '''255\.255\.255\.\d{1,3}'''        # Netmask addresses
+]

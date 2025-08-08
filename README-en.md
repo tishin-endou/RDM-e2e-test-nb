@@ -14,6 +14,41 @@ E2E tests (such as Playwright) are powerful tools for testing, but they have man
 
 Using [Jupyter Notebook](https://jupyter.org/) solves this problem. Since you can execute cell by cell, you can identify problem areas while executing step-by-step. You can visually track test progress by checking screenshots at each step. Even when tests fail, execution results up to the previous cell remain, making it easy to isolate problems. The interactive environment allows you to modify test code through trial and error, making maintenance work efficient.
 
+## CI/CD (GitHub Actions)
+
+This repository uses GitHub Actions to automatically run E2E tests. Tests are automatically executed on push or pull request, continuously verifying the GRDM codebase behavior.
+
+### Checking Test Results
+
+After test execution, results can be checked from GitHub Actions Artifacts:
+
+1. **test-results-failed** - Archive containing only failed test notebooks
+   - Notebook (.ipynb) files where errors occurred
+   - Related sub-notebooks and execution results
+   - Minimal set of files needed for problem investigation
+
+2. **test-results-full** - Complete archive containing all test results
+   - All executed notebook (.ipynb) files
+   - Screen capture videos (.webm format)
+   - Execution results and evidence for each test step
+
+### Video Verification
+
+The execution process of each test is recorded as video (.webm format):
+- Videos can be played directly in browsers
+- You can visually confirm how each test step was executed
+- You can accurately understand the screen state when errors occur
+
+### Detailed Confirmation with Notebooks
+
+Test result notebook files contain the following information:
+- Execution results for each cell
+- Error messages and stack traces
+- Runtime parameters
+- Screenshots (when errors occur)
+
+By opening these notebooks in a Jupyter environment, you can check error details and re-execute or debug as needed.
+
 ## Integration Test Environment Architecture
 
 The following software is used for GRDM integration test automation:

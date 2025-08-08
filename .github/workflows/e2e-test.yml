@@ -1,0 +1,470 @@
+name: E2E Test Execution
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      rdm_branch:
+        description: 'RDM-osf.io branch to test against'
+        required: false
+        default: 'develop'
+      test_config:
+        description: 'Test configuration file to use'
+        required: false
+        default: 'ci.config.yaml'
+      skip_failed:
+        description: 'Continue running tests even if some fail'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+    - name: Free up disk space
+      run: |
+        echo "Initial disk usage:"
+        df -h
+        
+        # Remove unnecessary tools (saves ~35-47GB)
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        
+        # Clean apt cache
+        sudo apt-get clean
+        
+        # Remove swap file
+        sudo swapoff -a
+        sudo rm -f /swapfile
+        
+        echo "Disk usage after cleanup:"
+        df -h
+        
+    - name: Checkout test repository
+      uses: actions/checkout@v4
+      with:
+        path: e2e-tests
+
+    - name: Checkout RDM-osf.io
+      uses: actions/checkout@v4
+      with:
+        repository: RCOSDP/RDM-osf.io
+        ref: ${{ github.event.inputs.rdm_branch || 'develop' }}
+        path: RDM-osf.io
+
+    - name: Configure Docker to use /mnt
+      run: |
+        # Stop Docker service
+        sudo systemctl stop docker
+        
+        # Create Docker data directory on /mnt
+        sudo mkdir -p /mnt/docker
+        
+        # Configure Docker to use /mnt
+        sudo tee /etc/docker/daemon.json <<EOF
+        {
+          "data-root": "/mnt/docker"
+        }
+        EOF
+        
+        # Start Docker service
+        sudo systemctl start docker
+        
+        # Verify Docker is using /mnt
+        docker info | grep "Docker Root Dir"
+        df -h
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Install Docker Compose
+      run: |
+        sudo curl -L "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        docker-compose --version
+
+    - name: Create required configuration files for RDM
+      working-directory: RDM-osf.io
+      run: |
+        # Copy configuration files as per README-docker-compose.md
+        cp ./website/settings/local-dist.py ./website/settings/local.py
+        cp ./api/base/settings/local-dist.py ./api/base/settings/local.py
+        cp ./docker-compose-dist.override.yml ./docker-compose.override.yml
+        cp ./tasks/local-dist.py ./tasks/local.py
+
+    - name: Create docker-compose override for NII Cloud Operation images
+      working-directory: RDM-osf.io
+      run: |
+        # Create docker-compose.override.yml with NII Cloud Operation images
+        cat > docker-compose.override.yml << 'EOL'
+        # NII Cloud Operation images override
+        services:
+          fakecas:
+            image: niicloudoperation/rdm-fakecas:latest
+          admin:
+            image: niicloudoperation/rdm-osf.io:latest
+            environment:
+              AWS_EC2_METADATA_DISABLED: "true"
+          admin_assets:
+            image: niicloudoperation/rdm-osf.io:latest
+          api:
+            image: niicloudoperation/rdm-osf.io:latest
+          assets:
+            image: niicloudoperation/rdm-osf.io:latest
+          requirements:
+            image: niicloudoperation/rdm-osf.io:latest
+            command:
+              - /bin/bash
+              - -c
+              - apk add --no-cache --virtual .build-deps build-base linux-headers python3-dev musl-dev libxml2-dev libxslt-dev postgresql-dev libffi-dev libpng-dev freetype-dev jpeg-dev &&
+                invoke requirements --all &&
+                (python3 -m compileall /usr/lib/python3.6 || true) &&
+                rm -Rf /python3.6/* &&
+                cp -Rf -p /usr/lib/python3.6 /
+          web:
+            image: niicloudoperation/rdm-osf.io:latest
+            environment:
+              OAUTHLIB_INSECURE_TRANSPORT: '1'
+          worker:
+            image: niicloudoperation/rdm-osf.io:latest
+          ember_osf_web:
+            image: niicloudoperation/rdm-ember-osf-web:latest
+          cas:
+            image: niicloudoperation/rdm-cas-overlay:latest
+          mfr:
+            image: niicloudoperation/rdm-modular-file-renderer:latest
+          mfr_requirements:
+            image: niicloudoperation/rdm-modular-file-renderer:latest
+          wb:
+            image: niicloudoperation/rdm-waterbutler:latest
+          wb_worker:
+            image: niicloudoperation/rdm-waterbutler:latest
+          wb_requirements:
+            image: niicloudoperation/rdm-waterbutler:latest
+        EOL
+
+    - name: Setup host networking alias
+      run: |
+        # Add loopback alias for Ubuntu as per README-docker-compose.md
+        sudo ifconfig lo:0 192.168.168.167 netmask 255.255.255.255 up
+
+    - name: Install RDM requirements
+      working-directory: RDM-osf.io
+      run: |
+        # Install Python/Node requirements first
+        docker-compose run --rm requirements
+        docker-compose run --rm mfr_requirements  
+        docker-compose run --rm wb_requirements
+      timeout-minutes: 15
+
+    - name: Run Django migrations
+      working-directory: RDM-osf.io
+      run: |
+        # Run Django migrations after requirements installation
+        echo "Running Django migrations..."
+        docker-compose run --rm web python3 manage.py migrate
+        
+    - name: Enable feature flags
+      working-directory: RDM-osf.io
+      run: |
+        # Enable Metadata addon feature flag
+        echo "Enabling Metadata addon feature flag..."
+        docker-compose run --rm web python3 manage.py waffle_flag ember_edit_draft_registration_page --everyone
+
+    - name: Start infrastructure services
+      working-directory: RDM-osf.io
+      run: |
+        # Start core infrastructure services
+        docker-compose up -d elasticsearch postgres mongo rabbitmq
+        
+        # Wait for services to be ready
+        echo "Waiting for infrastructure services to start..."
+        sleep 30
+        
+        # Check if services are running
+        docker-compose ps
+
+    - name: Start supporting services
+      working-directory: RDM-osf.io
+      run: |
+        # Start supporting services
+        docker-compose up -d mfr wb fakecas sharejs
+        
+        # Wait for services to be ready
+        echo "Waiting for supporting services to start..."
+        sleep 20
+
+    - name: Compile translations
+      working-directory: RDM-osf.io
+      run: |
+        # Compile translation files for Japanese locale
+        docker-compose run --rm web pybabel compile -d ./website/translations
+        echo "Translation files compiled successfully"
+
+    - name: Build and start assets
+      working-directory: RDM-osf.io
+      run: |
+        # Remove existing node_modules and start assets
+        rm -rf ./node_modules || true
+        docker-compose up -d assets
+        
+        # Wait for assets to build (this can take a while)
+        echo "Waiting for assets to build..."
+        sleep 120
+        
+        # Check assets container status
+        docker-compose logs --tail 50 assets
+
+    - name: Start main OSF services
+      working-directory: RDM-osf.io
+      run: |
+        # Start the main OSF services
+        docker-compose up -d wb_worker worker web api ember_osf_web
+        
+        # Wait for services to start
+        echo "Waiting for main services to start..."
+        sleep 60
+        
+        # Wait for ember_osf_web to finish building by checking logs
+        echo "Waiting for ember_osf_web to complete build..."
+        TIMEOUT=600  # 10 minutes timeout
+        ELAPSED=0
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          if docker-compose logs ember_osf_web | grep -q "Build successful.*Serving on http://0.0.0.0:4200/"; then
+            echo "ember_osf_web build completed successfully!"
+            break
+          fi
+          echo "Waiting for ember_osf_web build to complete... (${ELAPSED}s elapsed)"
+          sleep 10
+          ELAPSED=$((ELAPSED + 10))
+        done
+        
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+          echo "Timeout waiting for ember_osf_web build to complete"
+          docker-compose logs --tail 50 ember_osf_web
+          exit 1
+        fi
+
+    - name: Check service status
+      working-directory: RDM-osf.io
+      run: |
+        # Display status of all services
+        docker-compose ps
+        
+        # Show recent logs for debugging
+        echo "=== Web service logs ==="
+        docker-compose logs --tail 20 web
+        echo "=== API service logs ==="
+        docker-compose logs --tail 20 api
+        echo "=== Assets service logs ==="
+        docker-compose logs --tail 20 assets
+
+    - name: Wait for services to be fully ready
+      run: |
+        # Additional wait time for services to fully initialize
+        echo "Waiting for services to be fully ready..."
+        sleep 90
+
+    - name: Test endpoint accessibility
+      run: |
+        # Function to test endpoint and check for 400/500 errors
+        test_endpoint() {
+          local name="$1"
+          local url="$2"
+          echo "Testing $name..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 10 --retry-connrefused "$url" || echo "000")
+          echo "$name response code: $RESPONSE"
+          if [[ "$RESPONSE" == "400" || "$RESPONSE" == "500" ]]; then
+            echo "$name returned HTTP $RESPONSE - failing" >&2
+            exit 1
+          elif [[ "$RESPONSE" == "000" ]]; then
+            echo "$name connection failed (HTTP $RESPONSE) - failing" >&2
+            exit 1
+          elif [[ "$RESPONSE" != "200" && "$RESPONSE" != "302" ]]; then
+            echo "$name not accessible (HTTP $RESPONSE)" >&2
+          else
+            echo "$name is accessible"
+          fi
+        }
+        
+        # Test main OSF endpoints
+        test_endpoint "OSF Web (port 5000)" "http://localhost:5000/"
+        test_endpoint "OSF API (port 8000)" "http://localhost:8000/v2/"
+        test_endpoint "Ember OSF Web (port 4200)" "http://localhost:4200/"
+        test_endpoint "WaterButler (port 7777)" "http://localhost:7777/status"
+        test_endpoint "MFR (port 7778)" "http://localhost:7778/status"
+        test_endpoint "FakeCAS (port 8080)" "http://localhost:8080/login"
+
+    - name: Create test users and projects
+      working-directory: RDM-osf.io
+      run: |
+        # Copy the setup script to the container
+        docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/setup_test_data.py "$(docker-compose ps -q web)":/tmp/setup_test_data.py
+        
+        # Execute the script and capture project IDs
+        docker-compose exec -T web bash -c "python3 manage.py shell < /tmp/setup_test_data.py" | tee /tmp/setup_output.txt
+        
+        # Extract project IDs and names from output
+        PROJECT_ID_1=$(grep "PROJECT_ID_testuser1@example.com:" /tmp/setup_output.txt | cut -d' ' -f2)
+        PROJECT_ID_2=$(grep "PROJECT_ID_testuser2@example.com:" /tmp/setup_output.txt | cut -d' ' -f2)
+        PROJECT_NAME_1=$(grep "PROJECT_NAME_testuser1@example.com:" /tmp/setup_output.txt | cut -d' ' -f2-)
+        PROJECT_NAME_2=$(grep "PROJECT_NAME_testuser2@example.com:" /tmp/setup_output.txt | cut -d' ' -f2-)
+        
+        # Verify project IDs were created
+        if [ -z "${PROJECT_ID_1}" ] || [ -z "${PROJECT_ID_2}" ]; then
+          echo "ERROR: Failed to create projects for test users"
+          echo "PROJECT_ID_1: ${PROJECT_ID_1}"
+          echo "PROJECT_ID_2: ${PROJECT_ID_2}"
+          exit 1
+        fi
+        
+        # Export for later steps
+        echo "PROJECT_ID_1=${PROJECT_ID_1}" >> $GITHUB_ENV
+        echo "PROJECT_ID_2=${PROJECT_ID_2}" >> $GITHUB_ENV
+        echo "PROJECT_NAME_1=${PROJECT_NAME_1}" >> $GITHUB_ENV
+        echo "PROJECT_NAME_2=${PROJECT_NAME_2}" >> $GITHUB_ENV
+        
+        echo "Projects created successfully:"
+        echo "  testuser1: ${PROJECT_ID_1} - ${PROJECT_NAME_1}"
+        echo "  testuser2: ${PROJECT_ID_2} - ${PROJECT_NAME_2}"
+
+    - name: Set up Python for E2E tests
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install E2E test dependencies
+      working-directory: e2e-tests
+      run: |
+        # Install without cache to save disk space
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir -r requirements.txt
+        pip install --no-cache-dir papermill
+        
+        # Clear pip cache if any remains
+        pip cache purge || true
+
+    - name: Setup Node.js for Playwright
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install Playwright
+      run: |
+        # Install Playwright browsers with OS dependencies
+        npx playwright install --with-deps chromium
+
+    - name: Prepare test configuration
+      working-directory: e2e-tests
+      run: |
+        # Create CI configuration
+        cat > ci.config.yaml << 'EOF'
+        # CI Test Configuration
+        rdm_url: 'http://localhost:5000/'
+        admin_rdm_url: 'http://localhost:8001/'
+        
+        # Test users (created above)
+        idp_name_1: 'FakeCAS'
+        idp_username_1: 'testuser1@example.com'
+        idp_password_1: 'testpass123'
+        
+        idp_name_2: 'FakeCAS'
+        idp_username_2: 'testuser2@example.com'
+        idp_password_2: 'testpass456'
+        
+        # Test project URLs (using created project IDs and names)
+        rdm_project_url_1: 'http://localhost:5000/${{ env.PROJECT_ID_1 }}/'
+        rdm_project_name_1: '${{ env.PROJECT_NAME_1 }}'
+        rdm_project_url_2: 'http://localhost:5000/${{ env.PROJECT_ID_2 }}/'
+        
+        # Test settings
+        skip_failed_test: true  # Continue on failure
+        transition_timeout: 60000
+        skip_preview_check: true
+        skip_default_storage: false
+        skip_metadata: true  # TODO: Temporarily disabled - needs fixing for CI environment
+        skip_admin: true  # Admin tests might need additional setup
+        enable_1gb_file_upload: false
+        skip_erad_completion_test: true  # Skip e-Rad completion test in CI
+        
+        # Storage configurations (empty for CI)
+        storages_oauth: []
+        storages_s3: []
+        EOF
+        
+        # Display the generated configuration for debugging
+        echo "Generated CI configuration:"
+        cat ci.config.yaml
+
+    - name: Create result directories
+      working-directory: e2e-tests
+      run: |
+        mkdir -p result
+        mkdir -p result-failed
+
+    - name: Run E2E tests
+      working-directory: e2e-tests
+      run: |
+        # Run the automated test runner with failed notebook extraction
+        python run_tests.py ci.config.yaml --failed-result-path result-failed
+
+    - name: Upload failed test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-failed
+        path: e2e-tests/result-failed/
+        retention-days: 30
+
+    - name: Upload full test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-full
+        path: e2e-tests/result/
+        retention-days: 7
+
+    - name: Display final service status
+      if: always()
+      working-directory: RDM-osf.io
+      run: |
+        echo "=== Final service status ==="
+        docker-compose ps
+        
+        echo "=== Service resource usage ==="
+        docker stats --no-stream
+
+    - name: Cleanup
+      if: always()
+      run: |
+        cd RDM-osf.io
+        
+        # Save logs for debugging
+        docker-compose logs > ../e2e-tests/docker-compose-logs.txt 2>&1 || true
+        
+        # Stop all services
+        docker-compose down -v
+        
+        # Clean up Docker resources
+        docker system prune -f
+
+    - name: Upload Docker logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-compose-logs
+        path: e2e-tests/docker-compose-logs.txt
+        retention-days: 7

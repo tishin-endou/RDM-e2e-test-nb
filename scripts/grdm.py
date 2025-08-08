@@ -17,6 +17,13 @@ async def login_cas(page, username, password):
     await page.locator('//input[@name = "password"]').fill(password);
     await page.locator('//input[@type = "submit"]').click();
 
+async def login_fakecas(page, username):
+    """FakeCAS用のログイン処理"""
+    # ユーザー名を入力
+    await page.locator('#username').fill(username)
+    # Sign Inボタンをクリック
+    await page.locator('#submit').click()
+
 async def expect_idp_login(page, idp_name, timeout=30000):
     # Shibboleth Login Page
     login_page_locators = _get_login_page_locators(idp_name)
@@ -60,6 +67,16 @@ async def login(page, idp_name, idp_username, idp_password, transition_timeout=3
             await page.locator('//button[text() = "ログイン"]').click()
         await login_cas(page, idp_username, idp_password)
         return
+    
+    # FakeCASの場合の処理
+    if idp_name == 'FakeCAS':
+        # FakeCAS(port 8080)でない場合のみサインインボタンをクリック
+        if ':8080' not in page.url:
+            await page.locator('//button[@data-test-sign-in-button]').click()
+        await login_fakecas(page, idp_username)
+        return
+    
+    # 通常のIdP選択フロー（GakuNin RDM IdP, Orthrosなど）
     try:
         await page.locator('//*[@id = "dropdown_img"]').click()
 
