@@ -30,29 +30,6 @@ jobs:
     timeout-minutes: 120
 
     steps:
-    - name: Free up disk space
-      run: |
-        echo "Initial disk usage:"
-        df -h
-        
-        # Remove unnecessary tools (saves ~35-47GB)
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /usr/local/share/boost
-        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /opt/hostedtoolcache/CodeQL
-        
-        # Clean apt cache
-        sudo apt-get clean
-        
-        # Remove swap file
-        sudo swapoff -a
-        sudo rm -f /swapfile
-        
-        echo "Disk usage after cleanup:"
-        df -h
-        
     - name: Checkout test repository
       uses: actions/checkout@v4
       with:
