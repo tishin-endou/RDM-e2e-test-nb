@@ -395,7 +395,7 @@ jobs:
         transition_timeout: 60000
         skip_preview_check: true
         skip_default_storage: false
-        skip_metadata: true  # TODO: Temporarily disabled - needs fixing for CI environment
+        skip_metadata: false  # Enable Metadata Test
         skip_admin: true  # Admin tests might need additional setup
         enable_1gb_file_upload: false
         skip_erad_completion_test: true  # Skip e-Rad completion test in CI
