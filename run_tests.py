@@ -43,8 +43,12 @@ class TestRunner:
         self.skip_default_storage = False
         self.skip_metadata = False
         self.skip_admin = False
+        self.skip_login = False
         self.enable_1gb_file_upload = False
         self.skip_erad_completion_test = False
+        
+        # Exclude notebooks
+        self.exclude_notebooks = []
         
         # Storage configurations
         self.storages_oauth = [
@@ -93,6 +97,12 @@ class TestRunner:
     def run_notebook(self, base_notebook, optional_result_id=None, **optional_params):
         """Execute a notebook using papermill."""
         _, filename = os.path.split(base_notebook)
+        
+        # Check if notebook should be excluded
+        if filename in self.exclude_notebooks:
+            print(f'Skipping excluded notebook: {base_notebook}')
+            return None
+        
         result_id, _ = os.path.splitext(filename)
         if optional_result_id:
             result_id += optional_result_id
@@ -145,6 +155,10 @@ class TestRunner:
     def run_login_tests(self):
         """Run login-related tests."""
         print('\n=== Login Tests ===')
+        
+        if self.skip_login:
+            print('Skipping login tests (skip_login=true)')
+            return
         
         if hasattr(self, 'idp_name_1') and self.idp_name_1:
             self.result_notebooks.append(
@@ -273,6 +287,7 @@ class TestRunner:
                     timestamp_user=getattr(self, 'admin_timestamp_user', None),
                     quota_user_id=getattr(self, 'admin_quota_user_id', None),
                     entitlement_text=getattr(self, 'admin_entitlement_text', None),
+                    exclude_notebooks=self.exclude_notebooks,
                 )
             )
             
@@ -328,6 +343,10 @@ class TestRunner:
         
         # Check all executed notebooks
         for notebook_path in self.result_notebooks:
+            # Skip None entries
+            if notebook_path is None:
+                continue
+            
             # Check notebook for errors
             notebook_errors = self.check_notebook_errors(notebook_path)
             
@@ -370,8 +389,10 @@ class TestRunner:
         self.run_metadata_tests()
         self.run_admin_tests()
         
+        result_notebooks = [result_notebook for result_notebook in self.result_notebooks if result_notebook is not None]
+        
         print(f'\nTest run completed at {datetime.now()}')
-        print(f'Total notebooks executed: {len(self.result_notebooks)}')
+        print(f'Total notebooks executed: {len(result_notebooks)}')
         print(f'Results saved to: {self.result_dir}')
         
         # Extract failed notebooks for easier debugging
@@ -381,7 +402,7 @@ class TestRunner:
         if self.skip_failed_test:
             all_errors = []
             
-            for notebook_path in self.result_notebooks:
+            for notebook_path in result_notebooks:
                 # Check notebook and all its sub-notebooks for errors
                 notebook_errors = self.check_notebook_errors(notebook_path)
                 if notebook_errors:
@@ -409,7 +430,7 @@ class TestRunner:
                 print(error_msg, file=sys.stderr)
                 raise RuntimeError(f"{len(notebooks_with_errors)} notebook(s) failed")
         
-        return self.result_notebooks
+        return result_notebooks
 
 
 def main():

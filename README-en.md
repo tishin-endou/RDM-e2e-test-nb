@@ -14,6 +14,51 @@ E2E tests (such as Playwright) are powerful tools for testing, but they have man
 
 Using [Jupyter Notebook](https://jupyter.org/) solves this problem. Since you can execute cell by cell, you can identify problem areas while executing step-by-step. You can visually track test progress by checking screenshots at each step. Even when tests fail, execution results up to the previous cell remain, making it easy to isolate problems. The interactive environment allows you to modify test code through trial and error, making maintenance work efficient.
 
+### Use Cases
+
+In software development, both "acceptance testing" to verify that new features and fixes work correctly, and "continuous testing (CI/CD)" that runs automatically with every code change are essential for quality assurance. Especially in OSS development and multi-vendor collaboration environments, CI/CD mechanisms that continuously verify that changes by different developers haven't broken existing functionality play an extremely important role in maintaining codebase quality.
+
+However, traditionally these have often been implemented with separate tools and code, requiring dual management of test content in different formats. The innovative aspect of this automated integration testing is that a single test code written in Jupyter Notebook can be executed interactively when developers manually verify it, and the same code can be executed as-is in automated environments like GitHub Actions. In other words, tests that have been verified during development directly function as quality checks that will be automatically executed in the future.
+
+This system is utilized in the following two main scenarios:
+
+#### 1. Acceptance Testing During Feature Development
+
+During verification after feature development or bug fixes, we maximize the interactive characteristics of Jupyter Notebook. Developers and testers can enjoy the following advantages:
+
+- **Step-by-step execution**: Immediately identify problem areas by executing cell by cell
+- **Visual confirmation**: Progress while checking screenshots at each step
+- **Integration with external systems**: Tests including operations on external systems such as Google login are also possible
+
+For usage in this scenario, see the [Integration Test Environment Architecture](#integration-test-environment-architecture) section and beyond for details.
+
+#### 2. Automated Testing with CI/CD
+
+By integrating into CI/CD pipelines like GitHub Actions and utilizing command-line execution with papermill, we achieve continuous quality assurance:
+
+- **Automatic execution**: Tests run automatically on push or Pull Request
+- **Batch processing**: Execute notebooks non-interactively using papermill
+- **Parallel execution**: Run multiple test groups in parallel using matrix strategy
+- **Result visualization**: Save execution results as Artifacts, viewable as videos and notebooks
+
+For usage in this scenario, see the [CI/CD (GitHub Actions)](#cicd-github-actions) section for details.
+
+Note that some notebooks requiring interactive input cannot be executed in CI environments, but in such cases we take the following measures:
+
+- Inject values externally through parameterization
+- Implement skip processing using conditional branching
+- Prepare CI-specific alternative processing (e.g., mock authentication using FakeCAS)
+
+#### Contributing to Quality Assurance
+
+While it may be difficult to incorporate all acceptance tests directly into CI/CD, this system enables many tests to be incorporated into continuous testing. This achieves:
+
+- **Automated regression testing**: Continuously confirm that existing functionality isn't broken by new changes
+- **Early problem discovery**: Discover problems early in the development cycle, reducing fix costs
+- **Development efficiency improvement**: Reduce manual testing effort and focus on more creative work
+
+In this way, by contributing to quality assurance from both acceptance testing and CI/CD perspectives, we contribute to improving the stability and reliability of the GRDM codebase.
+
 ## CI/CD (GitHub Actions)
 
 This repository uses GitHub Actions to automatically run E2E tests. Tests are automatically executed on push or pull request, continuously verifying the GRDM codebase behavior.
