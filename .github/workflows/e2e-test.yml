@@ -414,7 +414,7 @@ jobs:
     - name: Install Playwright
       run: |
         # Install Playwright browsers with OS dependencies
-        npx playwright install --with-deps chromium
+        playwright install --with-deps chromium
 
     - name: Prepare test configuration
       working-directory: e2e-tests
