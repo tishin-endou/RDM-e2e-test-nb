@@ -390,6 +390,17 @@ jobs:
         echo "  testuser1: ${PROJECT_ID_1} - ${PROJECT_NAME_1}"
         echo "  testuser2: ${PROJECT_ID_2} - ${PROJECT_NAME_2}"
 
+    - name: Register e-Rad data
+      working-directory: RDM-osf.io
+      run: |
+        # Copy e-Rad sample data to container
+        docker cp ${{ github.workspace }}/e2e-tests/erad_sample.csv "$(docker-compose ps -q web)":/tmp/erad_sample.csv
+        
+        # Register e-Rad metadata
+        echo "Registering e-Rad test data..."
+        docker-compose exec -T web python3 -m scripts.register_erad_metadata /tmp/erad_sample.csv
+        echo "e-Rad data registered successfully"
+
     - name: Set up Python for E2E tests
       uses: actions/setup-python@v4
       with:
@@ -448,7 +459,7 @@ jobs:
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
         enable_1gb_file_upload: false
-        skip_erad_completion_test: true  # Skip e-Rad completion test in CI
+        skip_erad_completion_test: false  # e-Rad completion test enabled
         
         # Storage configurations (empty for CI)
         storages_oauth: []
