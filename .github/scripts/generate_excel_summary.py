@@ -175,8 +175,7 @@ def create_workbook(all_test_sets, author, ticket_number, result_dir):
             sheet['D4'] = 'テスト結果'
             sheet['D5'] = '成功'  # Will be updated later based on test results
             sheet['E4'] = '関連チケットURL'
-            sheet['E5'] = f'GRDM-{ticket_number}'
-            sheet['E5'].hyperlink = f'https://redmine.devops.rcos.nii.ac.jp/issues/{ticket_number}'
+            sheet['E5'] = ticket_number
             sheet['F4'] = '担当'
             sheet['F5'] = author
             sheet['G4'] = '実施日'
@@ -274,23 +273,24 @@ def create_workbook(all_test_sets, author, ticket_number, result_dir):
                 screenshot.width = int(itemheight / 1080 * 1920)
                 shutil.copy(last_images[0], os.path.join(result_dir, 'screenshots', test_id, '{0:05d}.png'.format(itemindex - 1)))            
 
-        summaryrow = index + 1
-        summary_sheet[f'A{summaryrow}'] = test_id
-        summary_sheet[f'B{summaryrow}'] = test_id
-        summary_sheet[f'C{summaryrow}'] = attrs['サブシステム名']
-        summary_sheet[f'D{summaryrow}'] = attrs['ページ/アドオン']
-        summary_sheet[f'E{summaryrow}'] = attrs['機能分類']
-        summary_sheet[f'F{summaryrow}'] = attrs['シナリオ名']
-        summary_sheet[f'G{summaryrow}'] = title
-        summary_sheet[f'H{summaryrow}'] = f'参照: {test_id}'
-        summary_sheet[f'H{summaryrow}'].hyperlink = f'#{test_id}!A1'
-        summary_sheet[f'I{summaryrow}'] = '成功' if not has_error else '失敗'
-        summary_sheet[f'J{summaryrow}'] = f'GRDM-{ticket_number}'
-        summary_sheet[f'J{summaryrow}'].hyperlink = f'https://redmine.devops.rcos.nii.ac.jp/issues/{ticket_number}'
-        summary_sheet[f'K{summaryrow}'] = author
-        summary_sheet[f'L{summaryrow}'] = datetime.now().strftime('%Y-%m-%d')
-        for cell in summary_sheet[f'A{summaryrow}:O{summaryrow}'][0]:
-            cell.alignment = Alignment(wrap_text=True, vertical='top')
+            sheet['D5'] = '失敗' if has_error else '成功'
+
+            summaryrow = index + 1
+            summary_sheet[f'A{summaryrow}'] = test_id
+            summary_sheet[f'B{summaryrow}'] = test_id
+            summary_sheet[f'C{summaryrow}'] = attrs['サブシステム名']
+            summary_sheet[f'D{summaryrow}'] = attrs['ページ/アドオン']
+            summary_sheet[f'E{summaryrow}'] = attrs['機能分類']
+            summary_sheet[f'F{summaryrow}'] = attrs['シナリオ名']
+            summary_sheet[f'G{summaryrow}'] = title
+            summary_sheet[f'H{summaryrow}'] = f'参照: {test_id}'
+            summary_sheet[f'H{summaryrow}'].hyperlink = f'#{test_id}!A1'
+            summary_sheet[f'I{summaryrow}'] = '成功' if not has_error else '失敗'
+            summary_sheet[f'J{summaryrow}'] = ticket_number
+            summary_sheet[f'K{summaryrow}'] = author
+            summary_sheet[f'L{summaryrow}'] = datetime.now().strftime('%Y-%m-%d')
+            for cell in summary_sheet[f'A{summaryrow}:O{summaryrow}'][0]:
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
     
     return wb
 

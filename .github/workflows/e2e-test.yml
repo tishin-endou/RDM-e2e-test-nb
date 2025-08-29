@@ -574,6 +574,19 @@ jobs:
         # Run the automated test runner with failed notebook extraction
         python run_tests.py ci.config.yaml --failed-result-path result-failed
 
+    - name: Extract GRDM ticket from PR
+      if: always() && github.event_name == 'pull_request'
+      id: extract-ticket
+      run: |
+        # Extract GRDM ticket from PR body
+        PR_BODY="${{ github.event.pull_request.body }}"
+        TICKET=$(echo "$PR_BODY" | grep -A 2 "## Ticket" | tail -1 | grep -oE "GRDM-[0-9]+" || echo "")
+        if [ -z "$TICKET" ]; then
+          TICKET="PR-${{ github.event.pull_request.number }}"
+        fi
+        echo "ticket=$TICKET" >> $GITHUB_OUTPUT
+        echo "Extracted ticket: $TICKET"
+
     - name: Generate Excel summary
       if: always()
       working-directory: e2e-tests
@@ -581,8 +594,15 @@ jobs:
         # Install required dependencies for Excel generation
         pip install openpyxl
         
+        # Determine ticket number
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          TICKET="${{ steps.extract-ticket.outputs.ticket }}"
+        else
+          TICKET="ACTIONS-${{ github.run_number }}"
+        fi
+        
         # Generate Excel summary from test results
-        python .github/scripts/generate_excel_summary.py result/ "GitHub Actions" "${{ github.run_number }}"
+        python .github/scripts/generate_excel_summary.py result/ "GitHub Actions" "$TICKET"
         
         # List generated Excel files and screenshots
         ls -la result/test-summary-*.xlsx || echo "No Excel summary generated"
