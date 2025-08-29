@@ -574,6 +574,31 @@ jobs:
         # Run the automated test runner with failed notebook extraction
         python run_tests.py ci.config.yaml --failed-result-path result-failed
 
+    - name: Generate Excel summary
+      if: always()
+      working-directory: e2e-tests
+      run: |
+        # Install required dependencies for Excel generation
+        pip install openpyxl
+        
+        # Generate Excel summary from test results
+        python .github/scripts/generate_excel_summary.py result/ "GitHub Actions" "${{ github.run_number }}"
+        
+        # List generated Excel files and screenshots
+        ls -la result/test-summary-*.xlsx || echo "No Excel summary generated"
+        ls -la result/screenshots/ || echo "No screenshots generated"
+
+    - name: Upload Excel summary with screenshots
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-summary-excel-${{ matrix.test-group.name }}
+        path: |
+          e2e-tests/result/test-summary-*.xlsx
+          e2e-tests/result/screenshots/
+        retention-days: 30
+      id: excel-upload
+
     - name: Upload failed test results
       if: always()
       uses: actions/upload-artifact@v4
@@ -621,3 +646,34 @@ jobs:
         name: docker-compose-logs-${{ matrix.test-group.name }}
         path: e2e-tests/docker-compose-logs.txt
         retention-days: 7
+
+  post-results-to-pr:
+    name: Post Results to PR
+    runs-on: ubuntu-latest
+    needs: [e2e-test]
+    if: always() && github.event_name == 'pull_request'
+    
+    steps:
+    - name: Comment PR with test results
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          
+          // Build comment
+          const comment = `## 📊 E2E Test Results
+          
+          Excel summaries and screenshots are available as artifacts:
+          
+          - [View all artifacts](${runUrl}#artifacts)
+          
+          *Run ID: ${context.runId}*`;
+          
+          // Post comment
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: comment
+          });
