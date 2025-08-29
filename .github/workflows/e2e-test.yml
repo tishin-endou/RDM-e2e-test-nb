@@ -580,7 +580,8 @@ jobs:
       run: |
         # Extract GRDM ticket from PR body
         PR_BODY="${{ github.event.pull_request.body }}"
-        TICKET=$(echo "$PR_BODY" | grep -A 2 "## Ticket" | tail -1 | grep -oE "GRDM-[0-9]+" || echo "")
+        # Extract GRDM-XXXXX from Ticket section (between ## Ticket and next ## or end)
+        TICKET=$(echo "$PR_BODY" | sed -n '/## Ticket/,/^##/p' | grep -oE "GRDM-[0-9]+" | head -1 || echo "")
         if [ -z "$TICKET" ]; then
           TICKET="PR-${{ github.event.pull_request.number }}"
         fi
