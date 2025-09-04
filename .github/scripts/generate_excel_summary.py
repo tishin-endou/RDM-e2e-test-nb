@@ -17,36 +17,33 @@ from base64 import b64decode
 
 
 def collect_all_notebooks(result_dir):
-    """Collect all notebook files from result directory."""
-    notebooks = []
+    """Recursively collect notebooks with hierarchical sorting."""
     result_path = Path(result_dir)
+    notebooks = []
     
-    # Search patterns - notebooks can be in subdirectories
-    patterns = [
-        '取りまとめ-*/notebooks/**/*.ipynb',  # 再帰的に検索
-        'notebooks/**/*.ipynb',  # notebooks以下の全階層
-        '**/*.ipynb'  # すべての階層（フォールバック）
+    # Get .ipynb files in current directory
+    current_notebooks = [
+        p for p in result_path.glob('*.ipynb') 
+        if '.ipynb_checkpoints' not in str(p)
     ]
+    current_notebooks.sort(key=lambda p: p.stat().st_mtime)
     
-    for pattern in patterns:
-        notebooks.extend(result_path.glob(pattern))
+    for nb in current_notebooks:
+        notebooks.append(nb)
+        
+        # Check for corresponding folder (e.g., "取りまとめ.ipynb" -> "取りまとめ/")
+        notebook_folder = result_path / nb.stem
+        if notebook_folder.exists() and notebook_folder.is_dir():
+            notebooks.extend(collect_all_notebooks(notebook_folder))
     
-    # Filter out checkpoint files
-    notebooks = [p for p in notebooks if '.ipynb_checkpoints' not in p.parts]
+    # Check other subdirectories without corresponding .ipynb
+    for subdir in result_path.iterdir():
+        if (subdir.is_dir() and 
+            '.ipynb_checkpoints' not in subdir.name and
+            not (result_path / f"{subdir.name}.ipynb").exists()):
+            notebooks.extend(collect_all_notebooks(subdir))
     
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_notebooks = []
-    for nb in notebooks:
-        if nb not in seen:
-            seen.add(nb)
-            unique_notebooks.append(nb)
-    
-    if not unique_notebooks:
-        raise ValueError(f"No notebooks found in {result_dir}")
-    
-    # Sort by modification time
-    return sorted(unique_notebooks, key=lambda p: p.stat().st_mtime)
+    return notebooks
 
 
 def has_header1(cell):
