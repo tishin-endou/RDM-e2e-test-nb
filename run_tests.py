@@ -193,6 +193,7 @@ class TestRunner:
                     skip_failed_test=self.skip_failed_test,
                     skip_preview_check=self.skip_preview_check,
                     too_large_file_upload_size=None,  # Disable large file test
+                    exclude_notebooks=self.exclude_notebooks,
                 )
             )
             
@@ -227,6 +228,7 @@ class TestRunner:
                     s3_default_region_2=getattr(self, f'{storage_id}_default_region_2', None),
                     s3_test_bucket_name_2=getattr(self, f'{storage_id}_test_bucket_name_2', None),
                     rdm_project_prefix=rdm_project_prefixes[storage_id],
+                    exclude_notebooks=self.exclude_notebooks,
                     target_storage_name=storage_name,
                     target_storage_id=storage_id,
                     enable_1gb_file_upload=self.enable_1gb_file_upload,
@@ -254,6 +256,7 @@ class TestRunner:
                     idp_password_2=getattr(self, 'idp_password_2', None),
                     skip_failed_test=self.skip_failed_test,
                     skip_erad_completion_test=self.skip_erad_completion_test,
+                    exclude_notebooks=self.exclude_notebooks,
                 )
             )
             

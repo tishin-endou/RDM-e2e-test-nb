@@ -178,6 +178,10 @@ jobs:
           CAS_OVERRIDE=$(grep -oP '^-\s*CAS_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           MFR_OVERRIDE=$(grep -oP '^-\s*MFR_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           WB_OVERRIDE=$(grep -oP '^-\s*WB_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          EXCLUDE_NOTEBOOKS_OVERRIDE=$(grep -oP '^-\s*EXCLUDE_NOTEBOOKS:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d '\r' || true)
+          
+          # Export for use in later steps
+          echo "EXCLUDE_NOTEBOOKS=$EXCLUDE_NOTEBOOKS_OVERRIDE" >> $GITHUB_ENV
           
           # Use overrides if found, otherwise defaults
           OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
@@ -550,16 +554,31 @@ jobs:
         storages_s3: []
         EOF
         
-        # Add exclude_notebooks if specified
-        if [ -n "${{ matrix.test-group.exclude_notebooks }}" ]; then
+        # Add exclude_notebooks - merge both PR body and matrix configuration
+        if [ -n "$EXCLUDE_NOTEBOOKS" ] || [ -n "${{ matrix.test-group.exclude_notebooks }}" ]; then
           echo "" >> ci.config.yaml
-          echo "# Exclude specific notebooks" >> ci.config.yaml
+          echo "# Exclude specific notebooks (merged from PR and matrix)" >> ci.config.yaml
           echo "exclude_notebooks:" >> ci.config.yaml
-          echo "${{ matrix.test-group.exclude_notebooks }}" | while read notebook; do
-            if [ -n "$notebook" ]; then
-              echo "  - '$notebook'" >> ci.config.yaml
-            fi
-          done
+          
+          # Add matrix excludes first
+          if [ -n "${{ matrix.test-group.exclude_notebooks }}" ]; then
+            echo "${{ matrix.test-group.exclude_notebooks }}" | while read notebook; do
+              if [ -n "$notebook" ]; then
+                echo "  - '$notebook'" >> ci.config.yaml
+              fi
+            done
+          fi
+          
+          # Add PR excludes (comma-separated)
+          if [ -n "$EXCLUDE_NOTEBOOKS" ]; then
+            echo "$EXCLUDE_NOTEBOOKS" | tr ',' '\n' | while read notebook; do
+              if [ -n "$notebook" ]; then
+                # Trim whitespace
+                notebook=$(echo "$notebook" | xargs)
+                echo "  - '$notebook'" >> ci.config.yaml
+              fi
+            done
+          fi
         fi
         
         # Display the generated configuration for debugging
