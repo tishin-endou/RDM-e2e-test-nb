@@ -90,10 +90,12 @@ jobs:
       id: rdm_config
       run: |
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          # Extract from PR body
-          PR_BODY="${{ github.event.pull_request.body }}"
-          RDM_REPO=$(echo "$PR_BODY" | grep -oP '^-\s*RDM_REPOSITORY:\s*\K.*$' | head -1 | tr -d ' ' || true)
-          RDM_BRANCH=$(echo "$PR_BODY" | grep -oP '^-\s*RDM_BRANCH:\s*\K.*$' | head -1 | tr -d ' ' || true)
+          # Extract from PR body (using file to avoid shell injection)
+          cat > /tmp/pr_body.txt << 'EOF'
+        ${{ github.event.pull_request.body }}
+        EOF
+          RDM_REPO=$(grep -oP '^-\s*RDM_REPOSITORY:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          RDM_BRANCH=$(grep -oP '^-\s*RDM_BRANCH:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           
           # Use extracted values or defaults
           FINAL_REPO="${RDM_REPO:-RCOSDP/RDM-osf.io}"
@@ -168,12 +170,14 @@ jobs:
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
           # Extract image overrides from PR description if present
           # Format: - OSF_IMAGE: yacchin1205/rdm2-osf.io:feature_ror-v2
-          PR_BODY="${{ github.event.pull_request.body }}"
-          OSF_OVERRIDE=$(echo "$PR_BODY" | grep -oP '^-\s*OSF_IMAGE:\s*\K.*$' | head -1 | tr -d ' ' || true)
-          EMBER_OVERRIDE=$(echo "$PR_BODY" | grep -oP '^-\s*EMBER_IMAGE:\s*\K.*$' | head -1 | tr -d ' ' || true)
-          CAS_OVERRIDE=$(echo "$PR_BODY" | grep -oP '^-\s*CAS_IMAGE:\s*\K.*$' | head -1 | tr -d ' ' || true)
-          MFR_OVERRIDE=$(echo "$PR_BODY" | grep -oP '^-\s*MFR_IMAGE:\s*\K.*$' | head -1 | tr -d ' ' || true)
-          WB_OVERRIDE=$(echo "$PR_BODY" | grep -oP '^-\s*WB_IMAGE:\s*\K.*$' | head -1 | tr -d ' ' || true)
+          cat > /tmp/pr_body.txt << 'EOF'
+        ${{ github.event.pull_request.body }}
+        EOF
+          OSF_OVERRIDE=$(grep -oP '^-\s*OSF_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          EMBER_OVERRIDE=$(grep -oP '^-\s*EMBER_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          CAS_OVERRIDE=$(grep -oP '^-\s*CAS_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          MFR_OVERRIDE=$(grep -oP '^-\s*MFR_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          WB_OVERRIDE=$(grep -oP '^-\s*WB_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           
           # Use overrides if found, otherwise defaults
           OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
@@ -578,10 +582,12 @@ jobs:
       if: always() && github.event_name == 'pull_request'
       id: extract-ticket
       run: |
-        # Extract GRDM ticket from PR body
-        PR_BODY="${{ github.event.pull_request.body }}"
+        # Extract GRDM ticket from PR body (using file to avoid shell injection)
+        cat > /tmp/pr_body.txt << 'EOF'
+        ${{ github.event.pull_request.body }}
+        EOF
         # Extract GRDM-XXXXX from Ticket section (between ## Ticket and next ## or end)
-        TICKET=$(echo "$PR_BODY" | sed -n '/## Ticket/,/^##/p' | grep -oE "GRDM-[0-9]+" | head -1 || echo "")
+        TICKET=$(sed -n '/## Ticket/,/^##/p' /tmp/pr_body.txt | grep -oE "GRDM-[0-9]+" | head -1 || echo "")
         if [ -z "$TICKET" ]; then
           TICKET="PR-${{ github.event.pull_request.number }}"
         fi
