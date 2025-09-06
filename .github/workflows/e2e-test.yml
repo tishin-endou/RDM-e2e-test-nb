@@ -543,7 +543,7 @@ jobs:
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
         enable_1gb_file_upload: false
-        skip_erad_completion_test: true
+        skip_erad_completion_test: false
         
         # Storage configurations (empty for CI)
         storages_oauth: []
