@@ -63,6 +63,20 @@ GitHub ActionsなどのCI/CDパイプラインに組み込み、papermillによ�
 このリポジトリではGitHub Actionsを使用してE2Eテストを自動実行しています。テストはpushやpull request時に自動的に実行され、GRDMコードベースの動作を継続的に検証します。
 現在はこのリポジトリでの実行のみですが、RDM-osf.ioコードベース側でもE2Eテストを実行することで、継続的な回帰テストの実現を目指しています。
 
+## マイグレーションテスト
+
+マイグレーションテストは、GRDMのバージョンアップ前後でデータと機能が正しく動作することを確認するテストです。
+
+1. **マイグレーション前**: 旧バージョンでテストデータを作成（例：`取りまとめ-Migration前-20250906.ipynb`）
+2. **マイグレーション実行**: システムを新バージョンへアップグレード
+3. **マイグレーション後**: 新バージョンでデータの整合性と機能を確認（例：`取りまとめ-Migration後-20250906.ipynb`）
+
+GitHub Actionsのワークフローでは、matrix設定で`migration_from`を指定することで実行されます。マイグレーションテスト用のNotebookは`migrations/`ディレクトリに配置されています。
+
+マイグレーション前後で確認したい処理を追加する場合は、`migrations/`ディレクトリ内の対応する取りまとめNotebookを編集し、必要に応じて新しいテスト手順Notebookを作成してください。
+
+異なるバージョンからのマイグレーションテストを追加する場合は、`.github/workflows/e2e-test.yml`のmatrix設定に新しいエントリを追加し、対応する日付の取りまとめNotebook（`取りまとめ-Migration前-YYYYMMDD.ipynb`と`取りまとめ-Migration後-YYYYMMDD.ipynb`）を`migrations/`ディレクトリに作成してください。
+
 ### テスト結果の確認
 
 テスト実行後、結果はGitHub ActionsのArtifactsから確認できます：

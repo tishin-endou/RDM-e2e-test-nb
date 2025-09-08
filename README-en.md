@@ -63,6 +63,20 @@ In this way, by contributing to quality assurance from both acceptance testing a
 
 This repository uses GitHub Actions to automatically run E2E tests. Tests are automatically executed on push or pull request, continuously verifying the GRDM codebase behavior.
 
+## Migration Testing
+
+Migration testing confirms that data and functionality work correctly before and after GRDM version upgrades.
+
+1. **Before migration**: Create test data in the old version (e.g., `取りまとめ-Migration前-20250906.ipynb`)
+2. **Execute migration**: Upgrade the system to the new version
+3. **After migration**: Verify data integrity and functionality in the new version (e.g., `取りまとめ-Migration後-20250906.ipynb`)
+
+In GitHub Actions workflows, this is executed by specifying `migration_from` in the matrix configuration. Migration test notebooks are located in the `migrations/` directory.
+
+To add processes to verify before and after migration, edit the corresponding summary notebooks in the `migrations/` directory and create new test procedure notebooks as needed.
+
+To add migration tests from different versions, add a new entry to the matrix configuration in `.github/workflows/e2e-test.yml` and create corresponding dated summary notebooks (`取りまとめ-Migration前-YYYYMMDD.ipynb` and `取りまとめ-Migration後-YYYYMMDD.ipynb`) in the `migrations/` directory.
+
 ### Checking Test Results
 
 After test execution, results can be checked from GitHub Actions Artifacts:
