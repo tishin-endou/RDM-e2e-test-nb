@@ -121,8 +121,8 @@ jobs:
           cat > /tmp/pr_body.txt << 'EOF'
         ${{ github.event.pull_request.body }}
         EOF
-          RDM_REPO=$(grep -oP '^-\s*RDM_REPOSITORY:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
-          RDM_BRANCH=$(grep -oP '^-\s*RDM_BRANCH:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
+          RDM_REPO=$(grep -oP '^-\s*RDM_REPOSITORY:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          RDM_BRANCH=$(grep -oP '^-\s*RDM_BRANCH:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
           
           # Use extracted values or defaults
           FINAL_REPO="${RDM_REPO:-RCOSDP/RDM-osf.io}"
