@@ -97,11 +97,11 @@ test_endpoint() {
 start_rdm_services() {
     local include_admin="${INCLUDE_ADMIN:-false}"
     
-    # Define services based on admin flag
+    # Define services based on admin flag (excluding assets which will be started separately)
     if [ "$include_admin" = "true" ]; then
-        export SERVICES="mfr wb fakecas sharejs wb_worker worker web api ember_osf_web assets admin_assets admin"
+        export SERVICES="mfr wb fakecas sharejs wb_worker worker web api ember_osf_web admin"
     else
-        export SERVICES="mfr wb fakecas sharejs wb_worker worker web api ember_osf_web assets"
+        export SERVICES="mfr wb fakecas sharejs wb_worker worker web api ember_osf_web"
     fi
     
     echo "Starting services: $SERVICES"
@@ -260,6 +260,23 @@ compile_translations() {
     echo "Translation compilation completed"
 }
 
+# Function to start asset services after translations are compiled
+start_asset_services() {
+    local include_admin="${INCLUDE_ADMIN:-false}"
+    
+    # Start asset services
+    export SERVICES="assets"
+    echo "Starting asset services: $SERVICES"
+    start_services
+    
+    if [ "$include_admin" = "true" ]; then
+        # Start admin_assets separately to avoid volume conflicts
+        export SERVICES="admin_assets"
+        echo "Starting admin asset services: $SERVICES"
+        start_services
+    fi
+}
+
 # Function to install requirements
 install_requirements() {
     echo "Installing requirements..."
@@ -292,6 +309,9 @@ if [ $# -gt 0 ]; then
             ;;
         compile_translations)
             compile_translations "$@"
+            ;;
+        start_asset_services)
+            start_asset_services "$@"
             ;;
         start_rdm_services)
             start_rdm_services "$@"

@@ -227,6 +227,9 @@ jobs:
         # Compile translations
         compile_translations
         
+        # Start asset services after translations
+        start_asset_services
+        
         # Start services for migration source environment
         start_rdm_services
         
@@ -401,6 +404,9 @@ jobs:
         source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
         export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
         compile_translations
+        
+        # Start asset services immediately after translations
+        start_asset_services
 
     - name: Start all RDM services
       working-directory: RDM-osf.io
