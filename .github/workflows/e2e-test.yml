@@ -58,14 +58,41 @@ jobs:
         test-group:
           - name: user
             display_name: "User Tests"
+            include_admin: false
             skip_admin: true
             skip_metadata: false
           - name: admin
             display_name: "Admin Tests"
+            include_admin: true
             skip_admin: false
             skip_metadata: true
             skip_default_storage: true
             skip_login: true
+            exclude_notebooks: |
+              テスト手順-管理者機能-ログイン可否設定.ipynb
+              テスト手順-管理者機能-ノード管理.ipynb
+              テスト手順-管理者機能-ユーザ管理.ipynb
+              テスト手順-管理者機能-機関設定.ipynb
+              テスト手順-管理者機能-RDMユーザメール.ipynb
+              テスト手順-管理者機能-RDM登録.ipynb
+              テスト手順-管理者機能-アドオン利用制御.ipynb
+              テスト手順-管理者機能-利用統計.ipynb
+              テスト手順-管理者機能-アナウンス.ipynb
+              テスト手順-管理者機能-証跡管理.ipynb
+              テスト手順-管理者機能-NIIストレージのクォータ.ipynb
+          - name: migration-from-20250906
+            display_name: "Migration Test from 20250906"
+            include_admin: true
+            migration_from:
+              repository: "RCOSDP/RDM-osf.io"
+              commit: "4c007f2"
+              osf_image: "niicloudoperation/rdm-osf.io:20250906"
+              ember_image: "niicloudoperation/rdm-ember-osf-web:20250906"
+              cas_image: "niicloudoperation/rdm-cas-overlay:20250906"
+              mfr_image: "niicloudoperation/rdm-modular-file-renderer:20250906"
+              wb_image: "niicloudoperation/rdm-waterbutler:20250906"
+              initial_data_notebook: "取りまとめ-Migration前-20250906.ipynb"
+              post_migration_notebook: "取りまとめ-Migration後-20250906.ipynb"
             exclude_notebooks: |
               テスト手順-管理者機能-ログイン可否設定.ipynb
               テスト手順-管理者機能-ノード管理.ipynb
@@ -116,6 +143,22 @@ jobs:
         repository: ${{ steps.rdm_config.outputs.repository }}
         ref: ${{ steps.rdm_config.outputs.branch }}
         path: RDM-osf.io
+        
+    - name: Setup migration source (migration mode)
+      if: matrix.test-group.migration_from != null
+      working-directory: RDM-osf.io
+      run: |
+        # Fetch origin to ensure we have the target version
+        git fetch origin
+        
+        # Add migration source repository as remote if different
+        if [ "${{ matrix.test-group.migration_from.repository }}" != "${{ steps.rdm_config.outputs.repository }}" ]; then
+          git remote add migration-source https://github.com/${{ matrix.test-group.migration_from.repository }}.git
+          git fetch migration-source
+        fi
+        
+        # Checkout the migration source commit
+        git checkout ${{ matrix.test-group.migration_from.commit }}
 
     - name: Configure Docker to use /mnt
       run: |
@@ -148,20 +191,157 @@ jobs:
         sudo chmod +x /usr/local/bin/docker-compose
         docker-compose --version
 
+    - name: Setup host networking alias
+      run: |
+        # Add loopback alias for Ubuntu as per README-docker-compose.md
+        sudo ifconfig lo:0 192.168.168.167 netmask 255.255.255.255 up
+
+    - name: Setup initial environment for migration
+      if: matrix.test-group.migration_from != null
+      working-directory: RDM-osf.io
+      run: |
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        
+        # Setup configuration files
+        export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
+        setup_config_files
+        
+        # Create docker-compose override with migration source images
+        export OSF_IMAGE="${{ matrix.test-group.migration_from.osf_image }}"
+        export EMBER_IMAGE="${{ matrix.test-group.migration_from.ember_image }}"
+        export CAS_IMAGE="${{ matrix.test-group.migration_from.cas_image }}"
+        export MFR_IMAGE="${{ matrix.test-group.migration_from.mfr_image }}"
+        export WB_IMAGE="${{ matrix.test-group.migration_from.wb_image }}"
+        create_docker_override
+        
+        # Install requirements
+        install_requirements
+        
+        # Run migrations
+        run_migrations
+        
+        # Enable feature flags
+        export FEATURE_FLAGS="ember_edit_draft_registration_page"
+        enable_feature_flags
+        
+        # Compile translations
+        compile_translations
+        
+        # Start asset services after translations
+        start_asset_services
+        
+        # Start services for migration source environment
+        start_rdm_services
+        
+        # Test endpoints
+        test_rdm_endpoints
+
+    - name: Set up Python for E2E tests
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install E2E test dependencies
+      working-directory: e2e-tests
+      run: |
+        # Install without cache to save disk space
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir -r requirements.txt
+        pip install --no-cache-dir papermill
+        
+        # Clear pip cache if any remains
+        pip cache purge || true
+
+    - name: Setup Node.js for Playwright
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install Playwright
+      run: |
+        # Install Playwright browsers with OS dependencies
+        playwright install --with-deps chromium
+
+    - name: Create test data for migration source
+      if: matrix.test-group.migration_from != null
+      working-directory: RDM-osf.io
+      run: |
+        echo "Creating test data in migration source environment..."
+        
+        # Copy the setup script to the container
+        docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/setup_test_data.py "$(docker-compose ps -q web)":/tmp/setup_test_data.py
+        
+        # Create test data that will be migrated
+        docker-compose exec -T web bash -c "python3 manage.py shell < /tmp/setup_test_data.py"
+        
+        echo "Migration source test data created"
+
+    - name: Run migration-specific initial data script
+      if: matrix.test-group.migration_from.initial_data_script != null
+      working-directory: RDM-osf.io
+      run: |
+        echo "Running migration-specific initial data script..."
+        
+        # Copy the migration-specific script to the container
+        docker cp ${{ github.workspace }}/e2e-tests/migrations/${{ matrix.test-group.migration_from.initial_data_script }} "$(docker-compose ps -q web)":/tmp/migration_init.py
+        
+        # Execute the migration-specific initial data script
+        docker-compose exec -T web bash -c "python3 manage.py shell < /tmp/migration_init.py"
+        
+        echo "Migration-specific initial data created"
+
+    - name: Run migration-specific initial data notebook
+      if: matrix.test-group.migration_from.initial_data_notebook != null
+      working-directory: e2e-tests/migrations
+      run: |
+        echo "Running migration-specific initial data notebook..."
+        
+        # Create result directory for migration initial data
+        mkdir -p ../result
+        
+        # Execute the notebook against the migration source environment
+        papermill ${{ matrix.test-group.migration_from.initial_data_notebook }} \
+          ../result/migration_initial_${{ matrix.test-group.migration_from.initial_data_notebook }} \
+          -p rdm_url "http://localhost:5000/" \
+          -p admin_rdm_url "http://localhost:8001/" \
+          -p idp_name_1 "FakeCAS" \
+          -p idp_username_1 "testuser1@example.com" \
+          -p idp_password_1 "testpass123" \
+          -p idp_name_2 "FakeCAS" \
+          -p idp_username_2 "testuser2@example.com" \
+          -p idp_password_2 "testpass456" \
+          -p default_result_path "../result" \
+          -p transition_timeout 60000
+        
+        echo "Migration-specific initial data notebook executed"
+
+    - name: Stop migration source environment
+      if: matrix.test-group.migration_from != null
+      working-directory: RDM-osf.io
+      run: |
+        echo "Stopping migration source environment..."
+        docker-compose down
+        echo "Migration source environment stopped"
+
+    - name: Switch to migration target version
+      if: matrix.test-group.migration_from != null
+      working-directory: RDM-osf.io
+      run: |
+        echo "Switching to migration target version..."
+        
+        # Reset to the target branch (same as originally checked out)
+        git checkout -f origin/${{ steps.rdm_config.outputs.branch }}
+        
+        echo "Switched to target version: ${{ steps.rdm_config.outputs.branch }}"
+
     - name: Create required configuration files for RDM
       working-directory: RDM-osf.io
       run: |
-        # Copy configuration files as per README-docker-compose.md
-        cp ./website/settings/local-dist.py ./website/settings/local.py
-        cp ./api/base/settings/local-dist.py ./api/base/settings/local.py
-        cp ./docker-compose-dist.override.yml ./docker-compose.override.yml
-        cp ./tasks/local-dist.py ./tasks/local.py
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
         
-        # Create admin settings if running admin tests
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
-          cp ./admin/base/settings/local-dist.py ./admin/base/settings/local.py
-          echo "ALLOWED_HOSTS = ['localhost']" >> ./admin/base/settings/local.py
-        fi
+        # Setup configuration files
+        export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
+        setup_config_files
 
     - name: Create docker-compose override for NII Cloud Operation images
       working-directory: RDM-osf.io
@@ -184,266 +364,98 @@ jobs:
           echo "EXCLUDE_NOTEBOOKS=$EXCLUDE_NOTEBOOKS_OVERRIDE" >> $GITHUB_ENV
           
           # Use overrides if found, otherwise defaults
-          OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
-          EMBER_IMAGE="${EMBER_OVERRIDE:-niicloudoperation/rdm-ember-osf-web:latest}"
-          CAS_IMAGE="${CAS_OVERRIDE:-niicloudoperation/rdm-cas-overlay:latest}"
-          MFR_IMAGE="${MFR_OVERRIDE:-niicloudoperation/rdm-modular-file-renderer:latest}"
-          WB_IMAGE="${WB_OVERRIDE:-niicloudoperation/rdm-waterbutler:latest}"
+          export OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
+          export EMBER_IMAGE="${EMBER_OVERRIDE:-niicloudoperation/rdm-ember-osf-web:latest}"
+          export CAS_IMAGE="${CAS_OVERRIDE:-niicloudoperation/rdm-cas-overlay:latest}"
+          export MFR_IMAGE="${MFR_OVERRIDE:-niicloudoperation/rdm-modular-file-renderer:latest}"
+          export WB_IMAGE="${WB_OVERRIDE:-niicloudoperation/rdm-waterbutler:latest}"
         else
           # Use workflow dispatch inputs or defaults
-          OSF_IMAGE="${{ github.event.inputs.osf_image || 'niicloudoperation/rdm-osf.io:latest' }}"
-          EMBER_IMAGE="${{ github.event.inputs.ember_image || 'niicloudoperation/rdm-ember-osf-web:latest' }}"
-          CAS_IMAGE="${{ github.event.inputs.cas_image || 'niicloudoperation/rdm-cas-overlay:latest' }}"
-          MFR_IMAGE="${{ github.event.inputs.mfr_image || 'niicloudoperation/rdm-modular-file-renderer:latest' }}"
-          WB_IMAGE="${{ github.event.inputs.wb_image || 'niicloudoperation/rdm-waterbutler:latest' }}"
+          export OSF_IMAGE="${{ github.event.inputs.osf_image || 'niicloudoperation/rdm-osf.io:latest' }}"
+          export EMBER_IMAGE="${{ github.event.inputs.ember_image || 'niicloudoperation/rdm-ember-osf-web:latest' }}"
+          export CAS_IMAGE="${{ github.event.inputs.cas_image || 'niicloudoperation/rdm-cas-overlay:latest' }}"
+          export MFR_IMAGE="${{ github.event.inputs.mfr_image || 'niicloudoperation/rdm-modular-file-renderer:latest' }}"
+          export WB_IMAGE="${{ github.event.inputs.wb_image || 'niicloudoperation/rdm-waterbutler:latest' }}"
         fi
         
-        # Log the images being used
-        echo "Using Docker images:"
-        echo "  OSF: $OSF_IMAGE"
-        echo "  Ember: $EMBER_IMAGE"
-        echo "  CAS: $CAS_IMAGE"
-        echo "  MFR: $MFR_IMAGE"
-        echo "  WaterButler: $WB_IMAGE"
-        
-        # Create docker-compose.override.yml with configurable images
-        cat > docker-compose.override.yml << EOL
-        # NII Cloud Operation images override
-        services:
-          fakecas:
-            image: niicloudoperation/rdm-fakecas:latest
-          admin:
-            image: ${OSF_IMAGE}
-            environment:
-              AWS_EC2_METADATA_DISABLED: "true"
-          admin_assets:
-            image: ${OSF_IMAGE}
-          api:
-            image: ${OSF_IMAGE}
-          assets:
-            image: ${OSF_IMAGE}
-          requirements:
-            image: ${OSF_IMAGE}
-            command:
-              - /bin/bash
-              - -c
-              - apk add --no-cache --virtual .build-deps build-base linux-headers python3-dev musl-dev libxml2-dev libxslt-dev postgresql-dev libffi-dev libpng-dev freetype-dev jpeg-dev &&
-                invoke requirements --all &&
-                (python3 -m compileall /usr/lib/python3.6 || true) &&
-                rm -Rf /python3.6/* &&
-                cp -Rf -p /usr/lib/python3.6 /
-          web:
-            image: ${OSF_IMAGE}
-            environment:
-              OAUTHLIB_INSECURE_TRANSPORT: '1'
-          worker:
-            image: ${OSF_IMAGE}
-          ember_osf_web:
-            image: ${EMBER_IMAGE}
-          cas:
-            image: ${CAS_IMAGE}
-          mfr:
-            image: ${MFR_IMAGE}
-          mfr_requirements:
-            image: ${MFR_IMAGE}
-          wb:
-            image: ${WB_IMAGE}
-          wb_worker:
-            image: ${WB_IMAGE}
-          wb_requirements:
-            image: ${WB_IMAGE}
-        EOL
-
-    - name: Setup host networking alias
-      run: |
-        # Add loopback alias for Ubuntu as per README-docker-compose.md
-        sudo ifconfig lo:0 192.168.168.167 netmask 255.255.255.255 up
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        create_docker_override
 
     - name: Install RDM requirements
       working-directory: RDM-osf.io
       run: |
-        # Install Python/Node requirements first
-        docker-compose run --rm requirements
-        docker-compose run --rm mfr_requirements  
-        docker-compose run --rm wb_requirements
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        install_requirements
       timeout-minutes: 15
 
     - name: Run Django migrations
       working-directory: RDM-osf.io
       run: |
-        # Run Django migrations after requirements installation
-        echo "Running Django migrations..."
-        docker-compose run --rm web python3 manage.py migrate
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        run_migrations
         
     - name: Enable feature flags
+      if: matrix.test-group.migration_from == null
       working-directory: RDM-osf.io
       run: |
-        # Enable Metadata addon feature flag
-        echo "Enabling Metadata addon feature flag..."
-        docker-compose run --rm web python3 manage.py waffle_flag ember_edit_draft_registration_page --everyone
-
-    - name: Start infrastructure services
-      working-directory: RDM-osf.io
-      run: |
-        # Start core infrastructure services
-        docker-compose up -d elasticsearch postgres mongo rabbitmq
-        
-        # Wait for services to be ready
-        echo "Waiting for infrastructure services to start..."
-        sleep 30
-        
-        # Check if services are running
-        docker-compose ps
-
-    - name: Start supporting services
-      working-directory: RDM-osf.io
-      run: |
-        # Start supporting services based on test group
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
-          # Admin tests don't need mfr and sharejs
-          docker-compose up -d wb fakecas
-        else
-          # User tests need all supporting services
-          docker-compose up -d mfr wb fakecas sharejs
-        fi
-        
-        # Wait for services to be ready
-        echo "Waiting for supporting services to start..."
-        sleep 20
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        export FEATURE_FLAGS="ember_edit_draft_registration_page"
+        enable_feature_flags
 
     - name: Compile translations
       working-directory: RDM-osf.io
       run: |
-        # Compile translation files for Japanese locale
-        docker-compose run --rm web pybabel compile -d ./website/translations
-        echo "Translation files compiled successfully"
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
+        compile_translations
         
-        # Compile translations for admin if needed
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
-          echo "Compiling translation files for admin services..."
-          docker-compose run --rm web pybabel compile -D django -d ./admin/translations
-          echo "Admin translation files compiled successfully"
-        fi
+        # Start asset services immediately after translations
+        start_asset_services
 
-    - name: Build and start assets
+    - name: Start all RDM services
       working-directory: RDM-osf.io
       run: |
-        # Remove existing node_modules and start assets
-        rm -rf ./node_modules || true
-        docker-compose up -d assets
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
+        start_rdm_services
         
-        # Start admin_assets if needed for admin tests
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
-          echo "Starting admin_assets for admin tests..."
-          docker-compose up -d admin_assets
-        fi
-        
-        # Wait for assets to build (this can take a while)
-        echo "Waiting for assets to build..."
-        sleep 120
-        
-        # Check assets container status
+        # Check final build status (for debugging if builds fail)
         docker-compose logs --tail 50 assets
-        
-        # Check admin_assets if running admin tests
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
+        if [ "${{ matrix.test-group.include_admin }}" = "true" ]; then
           docker-compose logs --tail 50 admin_assets
         fi
 
-    - name: Start main OSF services
-      working-directory: RDM-osf.io
-      run: |
-        # Start the main OSF services
-        docker-compose up -d wb_worker worker web api ember_osf_web
-        
-        # Start admin service if needed for admin tests (admin_assets already started)
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
-          echo "Starting admin service for admin tests..."
-          docker-compose up -d admin
-        fi
-        
-        # Wait for services to start
-        echo "Waiting for main services to start..."
-        sleep 60
-        
-        # Wait for ember_osf_web to finish building by checking logs
-        echo "Waiting for ember_osf_web to complete build..."
-        TIMEOUT=600  # 10 minutes timeout
-        ELAPSED=0
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          if docker-compose logs ember_osf_web | grep -q "Build successful.*Serving on http://0.0.0.0:4200/"; then
-            echo "ember_osf_web build completed successfully!"
-            break
-          fi
-          echo "Waiting for ember_osf_web build to complete... (${ELAPSED}s elapsed)"
-          sleep 10
-          ELAPSED=$((ELAPSED + 10))
-        done
-        
-        if [ $ELAPSED -ge $TIMEOUT ]; then
-          echo "Timeout waiting for ember_osf_web build to complete"
-          docker-compose logs --tail 50 ember_osf_web
-          exit 1
-        fi
-
-    - name: Check service status
-      working-directory: RDM-osf.io
-      run: |
-        # Display status of all services
-        docker-compose ps
-        
-        # Show recent logs for debugging
-        echo "=== Web service logs ==="
-        docker-compose logs --tail 20 web
-        echo "=== API service logs ==="
-        docker-compose logs --tail 20 api
-        echo "=== Assets service logs ==="
-        docker-compose logs --tail 20 assets
-
-    - name: Wait for services to be fully ready
-      run: |
-        # Additional wait time for services to fully initialize
-        echo "Waiting for services to be fully ready..."
-        sleep 90
-
     - name: Test endpoint accessibility
+      working-directory: RDM-osf.io
       run: |
-        # Function to test endpoint and check for 400/500 errors
-        test_endpoint() {
-          local name="$1"
-          local url="$2"
-          echo "Testing $name..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --retry 5 --retry-delay 10 --retry-connrefused "$url" || echo "000")
-          echo "$name response code: $RESPONSE"
-          if [[ "$RESPONSE" == "400" || "$RESPONSE" == "500" ]]; then
-            echo "$name returned HTTP $RESPONSE - failing" >&2
-            exit 1
-          elif [[ "$RESPONSE" == "000" ]]; then
-            echo "$name connection failed (HTTP $RESPONSE) - failing" >&2
-            exit 1
-          elif [[ "$RESPONSE" != "200" && "$RESPONSE" != "302" ]]; then
-            echo "$name not accessible (HTTP $RESPONSE)" >&2
-          else
-            echo "$name is accessible"
-          fi
-        }
+        source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
+        export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
+        test_rdm_endpoints
+
+    - name: Run post-migration tests
+      if: matrix.test-group.migration_from.post_migration_notebook != null
+      working-directory: e2e-tests/migrations
+      run: |
+        echo "Running post-migration tests..."
         
-        # Test main OSF endpoints
-        test_endpoint "OSF Web (port 5000)" "http://localhost:5000/"
-        test_endpoint "OSF API (port 8000)" "http://localhost:8000/v2/"
-        test_endpoint "Ember OSF Web (port 4200)" "http://localhost:4200/"
-        test_endpoint "WaterButler (port 7777)" "http://localhost:7777/status"
-        test_endpoint "FakeCAS (port 8080)" "http://localhost:8080/login"
+        # Create result directory (parent already exists from checkout)
+        mkdir -p ../result
         
-        # Test MFR only for user tests (not needed for admin)
-        if [ "${{ matrix.test-group.name }}" != "admin" ]; then
-          test_endpoint "MFR (port 7778)" "http://localhost:7778/status"
-        fi
+        # Execute the post-migration test notebook
+        papermill ${{ matrix.test-group.migration_from.post_migration_notebook }} \
+          ../result/${{ matrix.test-group.migration_from.post_migration_notebook }} \
+          -p rdm_url "http://localhost:5000/" \
+          -p admin_rdm_url "http://localhost:8001/" \
+          -p idp_name_1 "FakeCAS" \
+          -p idp_username_1 "testuser1@example.com" \
+          -p idp_password_1 "testpass123" \
+          -p idp_name_2 "FakeCAS" \
+          -p idp_username_2 "testuser2@example.com" \
+          -p idp_password_2 "testpass456" \
+          -p default_result_path "../result" \
+          -p transition_timeout 60000
         
-        # Test admin endpoints if running admin tests
-        if [ "${{ matrix.test-group.name }}" = "admin" ]; then
-          test_endpoint "Admin Web (port 8001)" "http://localhost:8001/"
-        fi
+        echo "Post-migration tests completed"
 
     - name: Create test users and projects
       working-directory: RDM-osf.io
@@ -488,32 +500,6 @@ jobs:
         echo "Registering e-Rad test data..."
         docker-compose exec -T web python3 -m scripts.register_erad_metadata /tmp/erad_sample.csv
         echo "e-Rad data registered successfully"
-
-    - name: Set up Python for E2E tests
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-
-    - name: Install E2E test dependencies
-      working-directory: e2e-tests
-      run: |
-        # Install without cache to save disk space
-        python -m pip install --upgrade pip
-        pip install --no-cache-dir -r requirements.txt
-        pip install --no-cache-dir papermill
-        
-        # Clear pip cache if any remains
-        pip cache purge || true
-
-    - name: Setup Node.js for Playwright
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-
-    - name: Install Playwright
-      run: |
-        # Install Playwright browsers with OS dependencies
-        playwright install --with-deps chromium
 
     - name: Prepare test configuration
       working-directory: e2e-tests
@@ -585,15 +571,13 @@ jobs:
         echo "Generated CI configuration for ${{ matrix.test-group.display_name }}:"
         cat ci.config.yaml
 
-    - name: Create result directories
-      working-directory: e2e-tests
-      run: |
-        mkdir -p result
-        mkdir -p result-failed
-
     - name: Run E2E tests
       working-directory: e2e-tests
       run: |
+        # Create result directories
+        mkdir -p result
+        mkdir -p result-failed
+        
         # Run the automated test runner with failed notebook extraction
         python run_tests.py ci.config.yaml --failed-result-path result-failed
 
@@ -661,20 +645,17 @@ jobs:
         path: e2e-tests/result/
         retention-days: 7
 
-    - name: Display final service status
+    - name: Cleanup and save logs
       if: always()
-      working-directory: RDM-osf.io
       run: |
+        cd RDM-osf.io
+        
+        # Display final service status
         echo "=== Final service status ==="
         docker-compose ps
         
         echo "=== Service resource usage ==="
         docker stats --no-stream
-
-    - name: Cleanup
-      if: always()
-      run: |
-        cd RDM-osf.io
         
         # Save logs for debugging
         docker-compose logs > ../e2e-tests/docker-compose-logs.txt 2>&1 || true
