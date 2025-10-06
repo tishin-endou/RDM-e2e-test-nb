@@ -141,6 +141,16 @@ setup_config_files() {
     
     # Copy base configuration files
     cp ./website/settings/local-dist.py ./website/settings/local.py
+    echo "" >> ./website/settings/local.py
+    echo "from . import defaults" >> ./website/settings/local.py
+    echo "import os" >> ./website/settings/local.py
+    echo "import logging" >> ./website/settings/local.py
+    echo "" >> ./website/settings/local.py
+    echo "ENABLE_PRIVATE_SEARCH = True" >> ./website/settings/local.py
+    echo "ENABLE_MULTILINGUAL_SEARCH = True" >> ./website/settings/local.py
+    echo "SEARCH_ANALYZER = defaults.SEARCH_ANALYZER_JAPANESE" >> ./website/settings/local.py
+    echo "LOG_LEVEL = logging.DEBUG" >> ./website/settings/local.py
+
     cp ./api/base/settings/local-dist.py ./api/base/settings/local.py
     cp ./docker-compose-dist.override.yml ./docker-compose.override.yml
     cp ./tasks/local-dist.py ./tasks/local.py
@@ -163,6 +173,7 @@ create_docker_override() {
     local cas_image="${CAS_IMAGE:-niicloudoperation/rdm-cas-overlay:latest}"
     local mfr_image="${MFR_IMAGE:-niicloudoperation/rdm-modular-file-renderer:latest}"
     local wb_image="${WB_IMAGE:-niicloudoperation/rdm-waterbutler:latest}"
+    local elasticsearch_image="${ELASTICSEARCH_IMAGE:-elasticsearch:2}"
     
     echo "Creating docker-compose override with:"
     echo "  OSF: $osf_image"
@@ -170,7 +181,8 @@ create_docker_override() {
     echo "  CAS: $cas_image"
     echo "  MFR: $mfr_image"
     echo "  WaterButler: $wb_image"
-    
+    echo "  Elasticsearch: $elasticsearch_image"
+
     cat > docker-compose.override.yml << EOL
 # NII Cloud Operation images override
 services:
@@ -216,6 +228,8 @@ services:
     image: ${wb_image}
   wb_requirements:
     image: ${wb_image}
+  elasticsearch:
+    image: ${elasticsearch_image}
 EOL
     
     echo "Docker compose override created"
@@ -224,7 +238,14 @@ EOL
 # Function to run Django migrations
 run_migrations() {
     echo "Running Django migrations..."
+    echo "Ensuring Elasticsearch is ready..."
+    docker-compose up -d elasticsearch
+    SERVICE_NAME="Elasticsearch" \
+    CHECK_COMMAND="curl -fs \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=120s\"" \
+    TIMEOUT=240 wait_for_service
     docker-compose run --rm web python3 manage.py migrate
+    echo "Running search migrations..."
+    docker-compose run --rm web invoke migrate_search
     echo "Migrations completed"
 }
 
