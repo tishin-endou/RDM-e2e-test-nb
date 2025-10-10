@@ -121,6 +121,9 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
             minio_enabled: true
     name: E2E ${{ matrix.test-group.display_name }}
     env:
@@ -721,6 +724,7 @@ jobs:
         skip_failed_test: true  # Continue on failure
         transition_timeout: 60000
         skip_preview_check: true
+        skip_130mb_upload: ${{ matrix.test-group.skip_130mb_upload || false }}
         skip_default_storage: ${{ matrix.test-group.skip_default_storage || false }}
         skip_metadata: ${{ matrix.test-group.skip_metadata }}
         skip_admin: ${{ matrix.test-group.skip_admin }}
