@@ -547,6 +547,18 @@ jobs:
           docker-compose logs --tail 50 admin_assets
         fi
 
+    - name: Seed KAKEN Elasticsearch data
+      working-directory: RDM-osf.io
+      run: |
+        set -xeu
+        NRID_URL="https://nrid.nii.ac.jp/nrid/1000050735975.json"
+        JSON_FILE=$(mktemp)
+        curl -fL "$NRID_URL" -o "$JSON_FILE"
+        docker cp "$JSON_FILE" "$(docker-compose ps -q web)":/tmp/kaken_seed.json
+        docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/seed_kaken_es.py "$(docker-compose ps -q web)":/tmp/seed_kaken_es.py
+        docker-compose exec -T web python3 /tmp/seed_kaken_es.py /tmp/kaken_seed.json "$NRID_URL"
+        rm "$JSON_FILE"
+
     - name: Test endpoint accessibility
       working-directory: RDM-osf.io
       run: |

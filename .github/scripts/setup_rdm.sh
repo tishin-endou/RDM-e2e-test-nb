@@ -103,6 +103,8 @@ start_rdm_services() {
     else
         export SERVICES="mfr wb fakecas sharejs wb_worker worker web api ember_osf_web"
     fi
+
+    SERVICES="kaken_elasticsearch $SERVICES"
     
     echo "Starting services: $SERVICES"
     
@@ -192,10 +194,13 @@ services:
     image: ${osf_image}
     environment:
       AWS_EC2_METADATA_DISABLED: "true"
+      KAKEN_ELASTIC_URI: http://kaken_elasticsearch:9200
   admin_assets:
     image: ${osf_image}
   api:
     image: ${osf_image}
+    environment:
+      KAKEN_ELASTIC_URI: http://kaken_elasticsearch:9200
   assets:
     image: ${osf_image}
   requirements:
@@ -212,8 +217,11 @@ services:
     image: ${osf_image}
     environment:
       OAUTHLIB_INSECURE_TRANSPORT: '1'
+      KAKEN_ELASTIC_URI: http://kaken_elasticsearch:9200
   worker:
     image: ${osf_image}
+    environment:
+      KAKEN_ELASTIC_URI: http://kaken_elasticsearch:9200
   ember_osf_web:
     image: ${ember_image}
   cas:
@@ -228,6 +236,14 @@ services:
     image: ${wb_image}
   wb_requirements:
     image: ${wb_image}
+  kaken_elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "19200:9200"
   elasticsearch:
     image: ${elasticsearch_image}
 EOL
@@ -241,7 +257,11 @@ run_migrations() {
     echo "Ensuring Elasticsearch is ready..."
     docker-compose up -d elasticsearch
     SERVICE_NAME="Elasticsearch" \
-    CHECK_COMMAND="curl -fs \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=120s\"" \
+    CHECK_COMMAND="curl -f \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=120s\"" \
+    TIMEOUT=240 wait_for_service
+    docker-compose up -d kaken_elasticsearch
+    SERVICE_NAME="KAKEN Elasticsearch" \
+    CHECK_COMMAND="curl -f \"http://localhost:19200/_cluster/health?wait_for_status=yellow&timeout=120s\"" \
     TIMEOUT=240 wait_for_service
     docker-compose run --rm web python3 manage.py migrate
     echo "Running search migrations..."
