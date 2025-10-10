@@ -5,10 +5,11 @@ import json
 import os
 import sys
 import urllib.request
+from typing import Any, Dict, Optional
 from urllib.error import HTTPError
 
 
-def request(method: str, url: str, body: dict | None) -> None:
+def request(method: str, url: str, body: Optional[Dict[str, Any]]) -> None:
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=data, method=method)
     if body is not None:
@@ -17,11 +18,11 @@ def request(method: str, url: str, body: dict | None) -> None:
         pass
 
 
-def put(url: str, body: dict) -> None:
+def put(url: str, body: Dict[str, Any]) -> None:
     request("PUT", url, body)
 
 
-def post(url: str, body: dict | None = None) -> None:
+def post(url: str, body: Optional[Dict[str, Any]] = None) -> None:
     request("POST", url, body)
 
 
