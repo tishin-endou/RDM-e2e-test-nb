@@ -69,6 +69,7 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            minio_enabled: false
           - name: admin
             display_name: "Admin Tests"
             include_admin: true
@@ -76,6 +77,7 @@ jobs:
             skip_metadata: true
             skip_default_storage: true
             skip_login: true
+            minio_enabled: false
             exclude_notebooks: |
               テスト手順-管理者機能-ログイン可否設定.ipynb
               テスト手順-管理者機能-ノード管理.ipynb
@@ -113,7 +115,25 @@ jobs:
               テスト手順-管理者機能-アナウンス.ipynb
               テスト手順-管理者機能-証跡管理.ipynb
               テスト手順-管理者機能-NIIストレージのクォータ.ipynb
+            minio_enabled: false
+          - name: user-minio
+            display_name: "User Tests (MinIO)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: false
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: true
     name: E2E ${{ matrix.test-group.display_name }}
+    env:
+      MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
+      MINIO_ROOT_USER: e2eadmin
+      MINIO_ROOT_PASSWORD: e2epassword123
+      MINIO_ALIAS: ci-minio
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_REGION: us-east-1
+      MINIO_SERVICE_NAME: MinIO (CI)
 
     steps:
     - name: Checkout test repository
@@ -559,6 +579,62 @@ jobs:
         docker-compose exec -T web python3 /tmp/seed_kaken_es.py /tmp/kaken_seed.json "$NRID_URL"
         rm "$JSON_FILE"
 
+    - name: Initialize MinIO for S3 compatibility tests
+      if: env.MINIO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        set -eu
+
+        key_part() {
+          LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 18
+        }
+
+        secret_part() {
+          LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 40
+        }
+
+        ACCESS_KEY_1="ci$(key_part)"
+        SECRET_KEY_1="$(secret_part)"
+        ACCESS_KEY_2="ci$(key_part)"
+        SECRET_KEY_2="$(secret_part)"
+
+        BUCKET_PREFIX="ci-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}"
+        BUCKET_NAME_1="${BUCKET_PREFIX}-a"
+        BUCKET_NAME_2="${BUCKET_PREFIX}-b"
+
+        export MINIO_VERIFY_LARGE_UPLOAD=true
+
+        .github/scripts/setup_minio_buckets.sh \
+          ../RDM-osf.io \
+          "${MINIO_ALIAS}" \
+          "${MINIO_ENDPOINT}" \
+          "${MINIO_ROOT_USER}" \
+          "${MINIO_ROOT_PASSWORD}" \
+          "${ACCESS_KEY_1}" "${SECRET_KEY_1}" "${BUCKET_NAME_1}" \
+          "${ACCESS_KEY_2}" "${SECRET_KEY_2}" "${BUCKET_NAME_2}"
+
+        echo "S3COMPAT_ACCESS_KEY_1=${ACCESS_KEY_1}" >> $GITHUB_ENV
+        echo "S3COMPAT_SECRET_KEY_1=${SECRET_KEY_1}" >> $GITHUB_ENV
+        echo "S3COMPAT_ACCESS_KEY_2=${ACCESS_KEY_2}" >> $GITHUB_ENV
+        echo "S3COMPAT_SECRET_KEY_2=${SECRET_KEY_2}" >> $GITHUB_ENV
+        echo "S3COMPAT_BUCKET_NAME_1=${BUCKET_NAME_1}" >> $GITHUB_ENV
+        echo "S3COMPAT_BUCKET_NAME_2=${BUCKET_NAME_2}" >> $GITHUB_ENV
+        echo "S3COMPAT_REGION=${MINIO_REGION}" >> $GITHUB_ENV
+        echo "S3COMPAT_ENDPOINT=${MINIO_ENDPOINT}" >> $GITHUB_ENV
+        echo "S3COMPAT_SERVICE_NAME=${MINIO_SERVICE_NAME}" >> $GITHUB_ENV
+
+    - name: Start MinIO trace
+      if: env.MINIO_ENABLED == 'true'
+      working-directory: RDM-osf.io
+      run: |
+        set -eu
+        docker-compose run -d --name minio-trace --entrypoint /bin/sh minio-mc -c "
+          set -euo pipefail
+          mc alias set ${MINIO_ALIAS} ${MINIO_ENDPOINT} ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}
+          mc admin trace --json --verbose --errors --path '${S3COMPAT_BUCKET_NAME_1}/*' --path '${S3COMPAT_BUCKET_NAME_2}/*' ${MINIO_ALIAS}
+        "
+
+
     - name: Test endpoint accessibility
       working-directory: RDM-osf.io
       run: |
@@ -638,8 +714,7 @@ jobs:
     - name: Prepare test configuration
       working-directory: e2e-tests
       run: |
-        # Create CI configuration based on test group
-        cat > ci.config.yaml << 'EOF'
+        cat > base_ci.config.yaml <<'EOF'
         # CI Test Configuration - ${{ matrix.test-group.display_name }}
         rdm_url: 'http://localhost:5000/'
         admin_rdm_url: 'http://localhost:8001/'
@@ -662,18 +737,24 @@ jobs:
         skip_failed_test: true  # Continue on failure
         transition_timeout: 60000
         skip_preview_check: true
+        skip_130mb_upload: ${{ matrix.test-group.skip_130mb_upload || false }}
         skip_default_storage: ${{ matrix.test-group.skip_default_storage || false }}
         skip_metadata: ${{ matrix.test-group.skip_metadata }}
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
         enable_1gb_file_upload: false
         skip_erad_completion_test: false
-        
-        # Storage configurations (empty for CI)
         storages_oauth: []
-        storages_s3: []
         EOF
-        
+
+        args=(ci.config.yaml base_ci.config.yaml)
+        if [ "${MINIO_ENABLED}" = "true" ]; then
+          args+=(--minio)
+        fi
+
+        .github/scripts/generate_ci_config.sh "${args[@]}"
+        rm base_ci.config.yaml
+
         # Add exclude_notebooks - merge both PR body and matrix configuration
         if [ -n "$EXCLUDE_NOTEBOOKS" ] || [ -n "${{ matrix.test-group.exclude_notebooks }}" ]; then
           echo "" >> ci.config.yaml
@@ -700,8 +781,6 @@ jobs:
             done
           fi
         fi
-        
-        # Display the generated configuration for debugging
         echo "Generated CI configuration for ${{ matrix.test-group.display_name }}:"
         cat ci.config.yaml
 
@@ -778,6 +857,24 @@ jobs:
         name: test-results-full-${{ matrix.test-group.name }}
         path: e2e-tests/result/
         retention-days: 7
+
+    - name: Collect MinIO trace
+      if: always() && env.MINIO_ENABLED == 'true'
+      working-directory: RDM-osf.io
+      run: |
+        set -eu
+        if docker ps -a --format '{{.Names}}' | grep -q '^minio-trace$'; then
+          docker logs minio-trace > ../e2e-tests/minio-trace.log || true
+          docker rm -f minio-trace || true
+        fi
+
+    - name: Upload MinIO trace
+      if: always() && env.MINIO_ENABLED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: minio-trace-${{ matrix.test-group.name }}
+        path: e2e-tests/minio-trace.log
+        if-no-files-found: ignore
 
     - name: Cleanup and save logs
       if: always()

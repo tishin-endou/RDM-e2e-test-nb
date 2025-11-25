@@ -40,6 +40,7 @@ class TestRunner:
         self.skip_failed_test = True
         self.transition_timeout = 60000
         self.skip_preview_check = False
+        self.skip_130mb_upload = False
         self.skip_default_storage = False
         self.skip_metadata = False
         self.skip_admin = False
@@ -234,6 +235,7 @@ class TestRunner:
                     enable_1gb_file_upload=self.enable_1gb_file_upload,
                     skip_failed_test=self.skip_failed_test,
                     skip_preview_check=self.skip_preview_check,
+                    skip_130mb_upload=self.skip_130mb_upload,
                     s3compat_type_name_1=getattr(self, 's3compat_type_name_1', None) if storage_id == 's3compat' else None,
                     s3compat_type_name_2=getattr(self, 's3compat_type_name_2', None) if storage_id == 's3compat' else None,
                     skip_too_many_files_check=storage_info.get('skip_too_many_files_check', False),

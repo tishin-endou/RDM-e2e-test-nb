@@ -4,29 +4,8 @@ set -xe
 # RDM setup and Docker utility functions for e2e tests
 # Note: These functions expect to be called from the appropriate working directory
 
-# Function to wait for a service to be ready
-wait_for_service() {
-    local service_name="${SERVICE_NAME}"
-    local check_command="${CHECK_COMMAND}"
-    local timeout="${TIMEOUT:-300}"  # Default 5 minutes
-    local interval="${INTERVAL:-10}"   # Default 10 seconds
-    
-    echo "Waiting for $service_name to be ready (timeout: ${timeout}s)..."
-    local elapsed=0
-    
-    while [ $elapsed -lt $timeout ]; do
-        if eval "$check_command" > /dev/null 2>&1; then
-            echo "$service_name is ready!"
-            return 0
-        fi
-        echo "Waiting for $service_name... (${elapsed}s elapsed)"
-        sleep $interval
-        elapsed=$((elapsed + interval))
-    done
-    
-    echo "Timeout waiting for $service_name"
-    return 1
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/wait_for_service.sh"
 
 # Function to start docker services with health check
 start_services() {
@@ -106,6 +85,10 @@ start_rdm_services() {
 
     SERVICES="kaken_elasticsearch $SERVICES"
     
+    if [ "${MINIO_ENABLED:-false}" = "true" ]; then
+        SERVICES="$SERVICES minio"
+    fi
+
     echo "Starting services: $SERVICES"
     
     # Use start_services function
@@ -247,8 +230,14 @@ services:
   elasticsearch:
     image: ${elasticsearch_image}
 EOL
-    
+
     echo "Docker compose override created"
+
+    if [ "${MINIO_ENABLED:-false}" = "true" ]; then
+        local script_dir
+        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        bash "${script_dir}/setup_minio.sh" apply "${PWD}"
+    fi
 }
 
 # Function to run Django migrations
