@@ -634,6 +634,7 @@ jobs:
           mc admin trace --json --verbose --errors --path '${S3COMPAT_BUCKET_NAME_1}/*' --path '${S3COMPAT_BUCKET_NAME_2}/*' ${MINIO_ALIAS}
         "
 
+
     - name: Test endpoint accessibility
       working-directory: RDM-osf.io
       run: |
