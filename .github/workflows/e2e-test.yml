@@ -70,6 +70,7 @@ jobs:
             skip_admin: true
             skip_metadata: false
             minio_enabled: false
+            weko_enabled: false
           - name: admin
             display_name: "Admin Tests"
             include_admin: true
@@ -78,6 +79,7 @@ jobs:
             skip_default_storage: true
             skip_login: true
             minio_enabled: false
+            weko_enabled: false
             exclude_notebooks: |
               テスト手順-管理者機能-ログイン可否設定.ipynb
               テスト手順-管理者機能-ノード管理.ipynb
@@ -116,6 +118,7 @@ jobs:
               テスト手順-管理者機能-証跡管理.ipynb
               テスト手順-管理者機能-NIIストレージのクォータ.ipynb
             minio_enabled: false
+            weko_enabled: false
           - name: user-minio
             display_name: "User Tests (MinIO)"
             include_admin: false
@@ -125,9 +128,21 @@ jobs:
             skip_login: true
             skip_130mb_upload: true
             minio_enabled: true
+            weko_enabled: false
+          - name: user-weko
+            display_name: "User Tests (WEKO)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: true
     name: E2E ${{ matrix.test-group.display_name }}
     env:
       MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
+      WEKO_ENABLED: ${{ matrix.test-group.weko_enabled == true && 'true' || 'false' }}
       MINIO_ROOT_USER: e2eadmin
       MINIO_ROOT_PASSWORD: e2epassword123
       MINIO_ALIAS: ci-minio
@@ -235,6 +250,20 @@ jobs:
         ref: ${{ steps.rdm_config.outputs.branch }}
         path: RDM-osf.io
         fetch-depth: 0
+
+    - name: Checkout WEKO repository
+      if: env.WEKO_ENABLED == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: RCOSDP/weko
+        ref: develop_v2.0.0
+        path: weko
+
+    - name: Prepare WEKO compose
+      if: env.WEKO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_weko.sh prepare ../weko
 
     - name: Merge custom RDM changes into develop
       if: steps.rdm_config.outputs.merge_required == 'true'
@@ -642,6 +671,12 @@ jobs:
         export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
         test_rdm_endpoints
 
+    - name: Install WEKO stack
+      if: env.WEKO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_weko.sh install ../weko
+
     - name: Run post-migration tests
       if: matrix.test-group.migration_from.post_migration_notebook != null
       working-directory: e2e-tests/migrations
@@ -875,6 +910,26 @@ jobs:
         name: minio-trace-${{ matrix.test-group.name }}
         path: e2e-tests/minio-trace.log
         if-no-files-found: ignore
+
+    - name: Collect WEKO logs
+      if: always() && env.WEKO_ENABLED == 'true'
+      working-directory: weko
+      run: |
+        docker compose -f docker-compose2.yml logs > ../e2e-tests/weko-docker-logs.txt 2>&1 || true
+
+    - name: Upload WEKO logs
+      if: always() && env.WEKO_ENABLED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: weko-logs-${{ matrix.test-group.name }}
+        path: e2e-tests/weko-docker-logs.txt
+        retention-days: 7
+
+    - name: Stop WEKO stack
+      if: always() && env.WEKO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_weko.sh down ../weko
 
     - name: Cleanup and save logs
       if: always()
