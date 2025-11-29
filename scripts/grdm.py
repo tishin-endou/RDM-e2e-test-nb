@@ -295,12 +295,12 @@ def _bytes_to_data_url(byte_data, mime_type="application/octet-stream"):
 async def upload_file(page, path):
     # Upload ボタンを使ってファイルをアップロード
     await page.locator('//i[contains(@class, "fa-upload")]/../*[text() = "アップロード"]').click()
-    await page.set_input_files('//input[@type = "file" and @class = "dz-hidden-input"]', path)
+    await page.set_input_files('//input[@type = "file" and @class = "dz-hidden-input"]', path, timeout=60000)
 
 async def upload_folder(page, path):
     # フォルダのアップロード ボタンを使ってファイルをアップロード
     await page.locator('//i[contains(@class, "fa-plus")]/../*[text() = "フォルダのアップロード"]').click()
-    await page.set_input_files('//input[@type = "file" and @webkitdirectory = "true"]', path)
+    await page.set_input_files('//input[@type = "file" and @webkitdirectory = "true"]', path, timeout=60000)
 
 async def drop_file(page, element_locator, path):
     # based on: https://zenn.dev/st_little/articles/how-to-upload-files-in-playwright

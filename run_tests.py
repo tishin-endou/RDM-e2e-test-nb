@@ -47,6 +47,10 @@ class TestRunner:
         self.skip_login = False
         self.enable_1gb_file_upload = False
         self.skip_erad_completion_test = False
+        self.jupyterhub_enabled = False
+        self.tljh_url = None
+        self.tljh_username = None
+        self.tljh_password = None
         
         # Exclude notebooks
         self.exclude_notebooks = []
@@ -296,6 +300,34 @@ class TestRunner:
                 )
             )
             
+    def run_jupyterhub_tests(self):
+        """Run BinderHub/TLJH related tests."""
+        print('\n=== JupyterHub Tests ===')
+        if not getattr(self, 'jupyterhub_enabled', False):
+            print('Skipping JupyterHub tests (jupyterhub_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in ['tljh_url', 'tljh_username', 'tljh_password']
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print(
+                'Error: Missing TLJH parameters: ' + ', '.join(missing_params)
+            )
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-BinderHubアドオン.ipynb',
+                tljh_url=self.tljh_url,
+                tljh_username=self.tljh_username,
+                tljh_password=self.tljh_password,
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
     def check_notebook_errors(self, notebook_path):
         """Check a notebook and all its sub-notebooks recursively for execution errors."""
         all_errors = []
@@ -393,6 +425,7 @@ class TestRunner:
         self.run_storage_tests()
         self.run_metadata_tests()
         self.run_admin_tests()
+        self.run_jupyterhub_tests()
         
         result_notebooks = [result_notebook for result_notebook in self.result_notebooks if result_notebook is not None]
         

@@ -13,6 +13,7 @@ from playwright.async_api import async_playwright, expect
 playwright = None
 current_session_id = None
 current_browser = None
+current_browser_type = None
 current_contexts = None
 default_last_path = None
 context_close_on_fail = True
@@ -21,12 +22,19 @@ console_messages = []
 
 async def run_pw(f, last_path=default_last_path, screenshot=True, permissions=None, new_context=False, new_page=False):
     global current_browser
+    global current_browser_type
     if current_browser is None:
-        current_browser = await playwright.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--lang=ja"],
-        )
-        # , "--timeout=25000"
+        browser_type = current_browser_type or 'chromium'
+        if browser_type == 'firefox':
+            current_browser = await playwright.firefox.launch(
+                headless=True,
+                args=[],
+            )
+        else:
+            current_browser = await playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--lang=ja"],
+            )
     
     global current_contexts
     if current_contexts is None or len(current_contexts) == 0 or new_context:
@@ -102,8 +110,8 @@ async def close_latest_page(last_path=None):
     current_contexts = current_contexts[:-1]
     await current_context.close()
 
-async def init_pw_context(close_on_fail=True, last_path=None):
-    global playwright, current_session_id, default_last_path, current_browser, temp_dir, context_close_on_fail, current_contexts, console_messages
+async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chromium'):
+    global playwright, current_session_id, default_last_path, current_browser, current_browser_type, temp_dir, context_close_on_fail, current_contexts, console_messages
     if current_browser is not None:
         await current_browser.close()
         current_browser = None
@@ -115,6 +123,7 @@ async def init_pw_context(close_on_fail=True, last_path=None):
     default_last_path = last_path or os.path.join(os.path.expanduser('~/last-screenshots'), current_session_id)
     temp_dir = tempfile.mkdtemp()
     context_close_on_fail = close_on_fail
+    current_browser_type = browser_type
     if current_contexts is not None:
         for current_context in current_contexts:
             await current_context.close()
@@ -200,3 +209,32 @@ async def _finish_pw_context(screenshot=False, last_path=None):
     if len(current_contexts) == 0:
         return
     await _finish_pw_context(screenshot=False, last_path=last_path)
+
+async def mock_clipboard(page):
+    """Mock navigator.clipboard for non-secure contexts."""
+    await page.evaluate("""
+        () => {
+            const clipboard = {
+                _mocked: true,
+                _text: null,
+                async writeText(text) {
+                    this._text = text;
+                },
+                async readText() {
+                    return this._text;
+                }
+            };
+            Object.defineProperty(navigator, 'clipboard', {
+                value: clipboard,
+                writable: true,
+                configurable: true
+            });
+        }
+    """)
+
+async def get_mocked_clipboard_text(page):
+    """Get text from the mocked clipboard."""
+    is_mocked = await page.evaluate("() => navigator.clipboard?._mocked")
+    if not is_mocked:
+        raise RuntimeError("Clipboard is not mocked. Call mock_clipboard(page) first.")
+    return await page.evaluate("() => navigator.clipboard._text")

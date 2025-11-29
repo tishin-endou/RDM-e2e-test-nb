@@ -71,6 +71,7 @@ jobs:
             skip_metadata: false
             minio_enabled: false
             weko_enabled: false
+            jupyterhub_enabled: false
           - name: admin
             display_name: "Admin Tests"
             include_admin: true
@@ -80,6 +81,7 @@ jobs:
             skip_login: true
             minio_enabled: false
             weko_enabled: false
+            jupyterhub_enabled: false
             exclude_notebooks: |
               テスト手順-管理者機能-ログイン可否設定.ipynb
               テスト手順-管理者機能-ノード管理.ipynb
@@ -119,6 +121,7 @@ jobs:
               テスト手順-管理者機能-NIIストレージのクォータ.ipynb
             minio_enabled: false
             weko_enabled: false
+            jupyterhub_enabled: false
           - name: user-minio
             display_name: "User Tests (MinIO)"
             include_admin: false
@@ -129,6 +132,7 @@ jobs:
             skip_130mb_upload: true
             minio_enabled: true
             weko_enabled: false
+            jupyterhub_enabled: false
           - name: user-weko
             display_name: "User Tests (WEKO)"
             include_admin: false
@@ -139,10 +143,23 @@ jobs:
             skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: true
+            jupyterhub_enabled: false
+          - name: user-jupyterhub
+            display_name: "User Tests (JupyterHub)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: true
     name: E2E ${{ matrix.test-group.display_name }}
     env:
       MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
       WEKO_ENABLED: ${{ matrix.test-group.weko_enabled == true && 'true' || 'false' }}
+      JUPYTERHUB_ENABLED: ${{ matrix.test-group.jupyterhub_enabled == true && 'true' || 'false' }}
       MINIO_ROOT_USER: e2eadmin
       MINIO_ROOT_PASSWORD: e2epassword123
       MINIO_ALIAS: ci-minio
@@ -431,7 +448,7 @@ jobs:
     - name: Install Playwright
       run: |
         # Install Playwright browsers with OS dependencies
-        playwright install --with-deps chromium
+        playwright install --with-deps chromium firefox
 
     - name: Create test data for migration source
       if: matrix.test-group.migration_from != null
@@ -473,8 +490,8 @@ jobs:
         # Execute the notebook against the migration source environment
         papermill ${{ matrix.test-group.migration_from.initial_data_notebook }} \
           ../result/migration_initial_${{ matrix.test-group.migration_from.initial_data_notebook }} \
-          -p rdm_url "http://localhost:5000/" \
-          -p admin_rdm_url "http://localhost:8001/" \
+          -p rdm_url "http://192.168.168.167:5000/" \
+          -p admin_rdm_url "http://192.168.168.167:8001/" \
           -p idp_name_1 "FakeCAS" \
           -p idp_username_1 "testuser1@example.com" \
           -p idp_password_1 "testpass123" \
@@ -596,6 +613,11 @@ jobs:
           docker-compose logs --tail 50 admin_assets
         fi
 
+    - name: Register OAuth scopes
+      working-directory: RDM-osf.io
+      run: |
+        docker-compose run --rm web python3 -m scripts.register_oauth_scopes
+
     - name: Seed KAKEN Elasticsearch data
       working-directory: RDM-osf.io
       run: |
@@ -677,6 +699,19 @@ jobs:
       run: |
         .github/scripts/setup_weko.sh install ../weko
 
+    - name: Install TLJH stack
+      if: env.JUPYTERHUB_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_tljh.sh install
+
+    - name: Configure TLJH connection info
+      if: env.JUPYTERHUB_ENABLED == 'true'
+      run: |
+        echo "TLJH_URL=http://localhost" >> $GITHUB_ENV
+        echo "TLJH_USERNAME=admin" >> $GITHUB_ENV
+        echo "TLJH_PASSWORD=change-your-password" >> $GITHUB_ENV
+
     - name: Run post-migration tests
       if: matrix.test-group.migration_from.post_migration_notebook != null
       working-directory: e2e-tests/migrations
@@ -689,8 +724,8 @@ jobs:
         # Execute the post-migration test notebook
         papermill ${{ matrix.test-group.migration_from.post_migration_notebook }} \
           ../result/${{ matrix.test-group.migration_from.post_migration_notebook }} \
-          -p rdm_url "http://localhost:5000/" \
-          -p admin_rdm_url "http://localhost:8001/" \
+          -p rdm_url "http://192.168.168.167:5000/" \
+          -p admin_rdm_url "http://192.168.168.167:8001/" \
           -p idp_name_1 "FakeCAS" \
           -p idp_username_1 "testuser1@example.com" \
           -p idp_password_1 "testpass123" \
@@ -751,8 +786,8 @@ jobs:
       run: |
         cat > base_ci.config.yaml <<'EOF'
         # CI Test Configuration - ${{ matrix.test-group.display_name }}
-        rdm_url: 'http://localhost:5000/'
-        admin_rdm_url: 'http://localhost:8001/'
+        rdm_url: 'http://192.168.168.167:5000/'
+        admin_rdm_url: 'http://192.168.168.167:8001/'
         
         # Test users (created above)
         idp_name_1: 'FakeCAS'
@@ -764,9 +799,9 @@ jobs:
         idp_password_2: 'testpass456'
         
         # Test project URLs (using created project IDs and names)
-        rdm_project_url_1: 'http://localhost:5000/${{ env.PROJECT_ID_1 }}/'
+        rdm_project_url_1: 'http://192.168.168.167:5000/${{ env.PROJECT_ID_1 }}/'
         rdm_project_name_1: '${{ env.PROJECT_NAME_1 }}'
-        rdm_project_url_2: 'http://localhost:5000/${{ env.PROJECT_ID_2 }}/'
+        rdm_project_url_2: 'http://192.168.168.167:5000/${{ env.PROJECT_ID_2 }}/'
         
         # Test settings for ${{ matrix.test-group.name }} group
         skip_failed_test: true  # Continue on failure
@@ -785,6 +820,9 @@ jobs:
         args=(ci.config.yaml base_ci.config.yaml)
         if [ "${MINIO_ENABLED}" = "true" ]; then
           args+=(--minio)
+        fi
+        if [ "${JUPYTERHUB_ENABLED}" = "true" ]; then
+          args+=(--jupyterhub)
         fi
 
         .github/scripts/generate_ci_config.sh "${args[@]}"
@@ -925,11 +963,30 @@ jobs:
         path: e2e-tests/weko-docker-logs.txt
         retention-days: 7
 
+    - name: Collect TLJH logs
+      if: always() && env.JUPYTERHUB_ENABLED == 'true'
+      run: |
+        sudo journalctl -u jupyterhub > e2e-tests/jupyterhub-logs.txt 2>&1 || true
+
+    - name: Upload TLJH logs
+      if: always() && env.JUPYTERHUB_ENABLED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tljh-logs-${{ matrix.test-group.name }}
+        path: e2e-tests/jupyterhub-logs.txt
+        retention-days: 7
+
     - name: Stop WEKO stack
       if: always() && env.WEKO_ENABLED == 'true'
       working-directory: e2e-tests
       run: |
         .github/scripts/setup_weko.sh down ../weko
+
+    - name: Stop TLJH stack
+      if: always() && env.JUPYTERHUB_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_tljh.sh down
 
     - name: Cleanup and save logs
       if: always()

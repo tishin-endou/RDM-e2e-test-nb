@@ -103,15 +103,15 @@ start_rdm_services() {
 # Function to test RDM endpoints
 test_rdm_endpoints() {
     local include_admin="${INCLUDE_ADMIN:-false}"
-    
+
     # Test main endpoints
-    ENDPOINT_NAME="OSF Web (port 5000)" ENDPOINT_URL="http://localhost:5000/" test_endpoint
-    ENDPOINT_NAME="OSF API (port 8000)" ENDPOINT_URL="http://localhost:8000/v2/" test_endpoint
+    ENDPOINT_NAME="OSF Web (port 5000)" ENDPOINT_URL="http://192.168.168.167:5000/" test_endpoint
+    ENDPOINT_NAME="OSF API (port 8000)" ENDPOINT_URL="http://192.168.168.167:8000/v2/" test_endpoint
     ENDPOINT_NAME="Ember OSF Web (port 4200)" ENDPOINT_URL="http://localhost:4200/" test_endpoint
-    ENDPOINT_NAME="WaterButler (port 7777)" ENDPOINT_URL="http://localhost:7777/status" test_endpoint
+    ENDPOINT_NAME="WaterButler (port 7777)" ENDPOINT_URL="http://192.168.168.167:7777/status" test_endpoint
     ENDPOINT_NAME="MFR (port 7778)" ENDPOINT_URL="http://localhost:7778/status" test_endpoint
     ENDPOINT_NAME="FakeCAS (port 8080)" ENDPOINT_URL="http://localhost:8080/login" test_endpoint
-    
+
     # Test admin endpoint if admin is enabled
     if [ "$include_admin" = "true" ]; then
         ENDPOINT_NAME="Admin Web (port 8001)" ENDPOINT_URL="http://localhost:8001/" test_endpoint
@@ -135,15 +135,31 @@ setup_config_files() {
     echo "ENABLE_MULTILINGUAL_SEARCH = True" >> ./website/settings/local.py
     echo "SEARCH_ANALYZER = defaults.SEARCH_ANALYZER_JAPANESE" >> ./website/settings/local.py
     echo "LOG_LEVEL = logging.DEBUG" >> ./website/settings/local.py
+    # Configure external access via 192.168.168.167
+    echo "" >> ./website/settings/local.py
+    echo "# External access configuration for CI environment" >> ./website/settings/local.py
+    echo "DOMAIN = 'http://192.168.168.167:5000/'" >> ./website/settings/local.py
+    echo "INTERNAL_DOMAIN = DOMAIN" >> ./website/settings/local.py
+    echo "API_DOMAIN = 'http://192.168.168.167:8000/'" >> ./website/settings/local.py
+    echo "WATERBUTLER_URL = 'http://192.168.168.167:7777'" >> ./website/settings/local.py
+    echo "WATERBUTLER_INTERNAL_URL = WATERBUTLER_URL" >> ./website/settings/local.py
+    echo "OSF_COOKIE_DOMAIN = '192.168.168.167'" >> ./website/settings/local.py
 
     cp ./api/base/settings/local-dist.py ./api/base/settings/local.py
+    echo "" >> ./api/base/settings/local.py
+    echo "# External access configuration for CI environment" >> ./api/base/settings/local.py
+    echo "ALLOWED_HOSTS.append('192.168.168.167')" >> ./api/base/settings/local.py
+
     cp ./docker-compose-dist.override.yml ./docker-compose.override.yml
     cp ./tasks/local-dist.py ./tasks/local.py
-    
+
     # Create admin settings if requested
     if [ "$include_admin" = "true" ]; then
         cp ./admin/base/settings/local-dist.py ./admin/base/settings/local.py
-        echo "ALLOWED_HOSTS = ['localhost']" >> ./admin/base/settings/local.py
+        echo "" >> ./admin/base/settings/local.py
+        echo "# External access configuration for CI environment" >> ./admin/base/settings/local.py
+        echo "ALLOWED_HOSTS = ['192.168.168.167', 'localhost']" >> ./admin/base/settings/local.py
+        echo "SESSION_COOKIE_DOMAIN = '192.168.168.167'" >> ./admin/base/settings/local.py
         echo "Admin configuration files created"
     fi
     
@@ -173,6 +189,7 @@ create_docker_override() {
 services:
   fakecas:
     image: niicloudoperation/rdm-fakecas:latest
+    command: fakecas -host=0.0.0.0:8080 -osfhost=192.168.168.167:5000 -dbaddress=postgres://postgres@postgres:5432/osf?sslmode=disable
   admin:
     image: ${osf_image}
     environment:
@@ -207,6 +224,10 @@ services:
       KAKEN_ELASTIC_URI: http://kaken_elasticsearch:9200
   ember_osf_web:
     image: ${ember_image}
+    environment:
+      OSF_URL: http://192.168.168.167:5000/
+      OSF_API_URL: http://192.168.168.167:8000
+      OSF_FILE_URL: http://192.168.168.167:7777/
   cas:
     image: ${cas_image}
   mfr:
@@ -232,6 +253,26 @@ services:
 EOL
 
     echo "Docker compose override created"
+
+    # Replace localhost with 192.168.168.167 in all .docker-compose*.env files for external access
+    for envfile in .docker-compose*.env; do
+        if [ -f "$envfile" ]; then
+            sed -i.bak \
+                -e 's|localhost:5000|192.168.168.167:5000|g' \
+                -e 's|localhost:8000|192.168.168.167:8000|g' \
+                -e 's|localhost:7777|192.168.168.167:7777|g' \
+                -e 's|localhost:7778|192.168.168.167:7778|g' \
+                -e 's|localhost:8001|192.168.168.167:8001|g' \
+                "$envfile"
+            rm -f "${envfile}.bak"
+            echo "Updated $envfile for external access:"
+            cat "$envfile"
+        fi
+    done
+
+    # Add WaterButler DOMAIN for external access
+    echo "" >> .docker-compose.wb.env
+    echo "DOMAIN=http://192.168.168.167:7777" >> .docker-compose.wb.env
 
     if [ "${MINIO_ENABLED:-false}" = "true" ]; then
         local script_dir
