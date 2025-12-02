@@ -162,7 +162,64 @@ setup_config_files() {
         echo "SESSION_COOKIE_DOMAIN = '192.168.168.167'" >> ./admin/base/settings/local.py
         echo "Admin configuration files created"
     fi
-    
+
+    # Create binderhub settings
+    cat > ./addons/binderhub/settings/local.py << 'BINDERHUB_EOF'
+BINDERHUB_DEPLOYMENT_IMAGES = [
+    {
+        'url': 'yacchin1205/cs-binder-dockerfiles:python-test-lab-4.2.6',
+        'name': 'Data Science Notebook (JupyterLab 4.2, TEST)',
+        'description_ja': 'データサイエンス向けのパッケージを含むPython, R, Juliaの実行環境です(テスト)。  https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-datascience-notebook',
+        'description_en': 'A Python, R, and Julia environment with popular packages for data analysis. https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-datascience-notebook',
+        'packages': ['conda', 'pip', 'rcran', 'rgithub'],
+    },
+    {
+        'url': '#repo2docker#python=3.12.*,r-base=4.4.*',
+        'name': 'Python 3.12 + R 4.4 (JupyterLab 4.x)',
+        'description_ja': 'Jupyter Notebook, JupyterLab, RStudio, Shinyが使えます。',
+        'description_en': 'Jupyter Notebook, JupyterLab, RStudio, and Shiny are available.',
+        'packages': ['conda', 'pip', 'rmran', 'mpm'],
+        'recommended': True,
+    },
+    {
+        'url': 'gcr.io/nii-ap-ops/base/datascience-notebook:main-lab4.x',
+        'name': 'Data Science Notebook (JupyterLab 4.x)',
+        'description_ja': 'データサイエンス向けのパッケージを含むPython, R, Juliaの実行環境です。  https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-datascience-notebook',
+        'description_en': 'A Python, R, and Julia environment with popular packages for data analysis. https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-datascience-notebook',
+        'packages': ['conda', 'pip', 'rcran', 'rgithub'],
+    },
+    {
+        'url': 'gcr.io/nii-ap-ops/base/matlab-notebook:r2023b',
+        'name': 'MATLAB (R2023b)',
+        'description_ja': 'MATLABがインストールされたJupyterLab実行環境です。  https://github.com/mathworks-ref-arch/matlab-integration-for-jupyter/tree/main/matlab',
+        'description_en': 'JupyterLab runtime environment with MATLAB installed.  https://github.com/mathworks-ref-arch/matlab-integration-for-jupyter/tree/main/matlab',
+        'packages': ['conda', 'pip'],
+    },
+    {
+        'url': '#repo2docker#python=3.12.*,r-base=4.3.*',
+        'name': 'Python 3.12 + R 4.3 (JupyterLab 4.x, deprecated)',
+        'description_ja': 'Jupyter Notebook, JupyterLab, RStudio, Shinyが使えます。',
+        'description_en': 'Jupyter Notebook, JupyterLab, RStudio, and Shiny are available.',
+        'packages': ['conda', 'pip', 'rmran', 'mpm'],
+    },
+    {
+        'url': '#repo2docker#python=3.9.*,r-base=4.1.3',
+        'name': 'Python 3.9 + R 4.1.3 (JupyterLab 3.x, deprecated)',
+        'description_ja': 'Jupyter Notebook, JupyterLab, RStudio, Shinyが使えます。',
+        'description_en': 'Jupyter Notebook, JupyterLab, RStudio, and Shiny are available.',
+        'packages': ['conda', 'pip', 'rmran'],
+    },
+    {
+        'url': 'gcr.io/nii-ap-ops/base/datascience-notebook:main',
+        'name': 'Data Science Notebook (JupyterLab 3.6, deprecated)',
+        'description_ja': 'データサイエンス向けのパッケージを含むPython, R, Juliaの実行環境です。  https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-datascience-notebook',
+        'description_en': 'A Python, R, and Julia environment with popular packages for data analysis. https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-datascience-notebook',
+        'packages': ['conda', 'pip', 'rcran', 'rgithub'],
+    },
+]
+BINDERHUB_EOF
+    echo "BinderHub configuration files created"
+
     echo "Configuration files setup completed"
 }
 
