@@ -295,7 +295,7 @@ def _bytes_to_data_url(byte_data, mime_type="application/octet-stream"):
 async def upload_file(page, path):
     # Upload ボタンを使ってファイルをアップロード
     await page.locator('//i[contains(@class, "fa-upload")]/../*[text() = "アップロード"]').click()
-    await page.set_input_files('//input[@type = "file" and @class = "dz-hidden-input"]', path, timeout=60000)
+    await page.set_input_files('//input[@type = "file"]', path, timeout=60000)
 
 async def upload_folder(page, path):
     # フォルダのアップロード ボタンを使ってファイルをアップロード
