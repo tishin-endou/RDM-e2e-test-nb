@@ -57,6 +57,19 @@ def rewrite_images(data: Dict[str, object]) -> bool:
     return modified
 
 
+def enable_insecure_transport(data: Dict[str, object]) -> bool:
+    """Enable OAUTHLIB_INSECURE_TRANSPORT for the web service."""
+    web_def = data["services"]["web"]
+    environment = web_def["environment"]
+
+    entry = "OAUTHLIB_INSECURE_TRANSPORT=1"
+    if entry in environment:
+        return False
+
+    environment.append(entry)
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Adjust WEKO docker-compose for CI use")
     parser.add_argument("compose_file", type=Path, help="Path to docker-compose YAML input")
@@ -110,13 +123,12 @@ def main() -> None:
 
     changed_ports = sanitize_ports(data, args.services, keep)
     changed_images = rewrite_images(data)
+    changed_insecure = enable_insecure_transport(data)
 
-    if changed_ports or changed_images:
+    if changed_ports or changed_images or changed_insecure:
         with output_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(data, fh, sort_keys=False)
-        print(
-            f"Updated {output_path} (ports adjusted: {changed_ports}, images adjusted: {changed_images})"
-        )
+        print(f"Updated {output_path}")
     else:
         print("No compose adjustments were applied")
 

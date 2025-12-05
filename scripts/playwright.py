@@ -17,6 +17,7 @@ current_browser_type = None
 current_contexts = None
 default_last_path = None
 context_close_on_fail = True
+current_ignore_https_errors = False
 temp_dir = None
 console_messages = []
 
@@ -43,9 +44,10 @@ async def run_pw(f, last_path=default_last_path, screenshot=True, permissions=No
         har_path = os.path.join(temp_dir, 'har.zip')
 
         context = await current_browser.new_context(
-            locale="ja-JP",  # Playwrightでは直接ロケールを設定可能
+            locale="ja-JP",
             record_video_dir=videos_dir,
             record_har_path=har_path,
+            ignore_https_errors=current_ignore_https_errors,
         )
         if current_contexts is None:
             current_contexts = [(context, [])]
@@ -110,8 +112,8 @@ async def close_latest_page(last_path=None):
     current_contexts = current_contexts[:-1]
     await current_context.close()
 
-async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chromium'):
-    global playwright, current_session_id, default_last_path, current_browser, current_browser_type, temp_dir, context_close_on_fail, current_contexts, console_messages
+async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chromium', ignore_https_errors=False):
+    global playwright, current_session_id, default_last_path, current_browser, current_browser_type, temp_dir, context_close_on_fail, current_ignore_https_errors, current_contexts, console_messages
     if current_browser is not None:
         await current_browser.close()
         current_browser = None
@@ -124,6 +126,7 @@ async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chro
     temp_dir = tempfile.mkdtemp()
     context_close_on_fail = close_on_fail
     current_browser_type = browser_type
+    current_ignore_https_errors = ignore_https_errors
     if current_contexts is not None:
         for current_context in current_contexts:
             await current_context.close()

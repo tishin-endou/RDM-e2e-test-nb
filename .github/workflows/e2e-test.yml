@@ -135,7 +135,7 @@ jobs:
             jupyterhub_enabled: false
           - name: user-weko
             display_name: "User Tests (WEKO)"
-            include_admin: false
+            include_admin: true
             skip_admin: true
             skip_metadata: true
             skip_default_storage: true
@@ -455,13 +455,16 @@ jobs:
       working-directory: RDM-osf.io
       run: |
         echo "Creating test data in migration source environment..."
-        
+
+        # Setup institutions first (required for setup_test_data.py)
+        docker-compose run --rm web python3 -m scripts.populate_institutions -e test -a
+
         # Copy the setup script to the container
         docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/setup_test_data.py "$(docker-compose ps -q web)":/tmp/setup_test_data.py
-        
+
         # Create test data that will be migrated
         docker-compose exec -T web bash -c "python3 manage.py shell < /tmp/setup_test_data.py"
-        
+
         echo "Migration source test data created"
 
     - name: Run migration-specific initial data script
@@ -606,12 +609,6 @@ jobs:
         source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
         export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
         start_rdm_services
-        
-        # Check final build status (for debugging if builds fail)
-        docker-compose logs --tail 50 assets
-        if [ "${{ matrix.test-group.include_admin }}" = "true" ]; then
-          docker-compose logs --tail 50 admin_assets
-        fi
 
     - name: Register OAuth scopes
       working-directory: RDM-osf.io
@@ -699,6 +696,31 @@ jobs:
       run: |
         .github/scripts/setup_weko.sh install ../weko
 
+    - name: Configure WEKO connection info
+      if: env.WEKO_ENABLED == 'true'
+      run: |
+        echo "WEKO_URL=https://192.168.168.167" >> $GITHUB_ENV
+        echo "WEKO_ADMIN_EMAIL=wekosoftware@nii.ac.jp" >> $GITHUB_ENV  # gitleaks:allow
+        echo "WEKO_ADMIN_PASSWORD=uspass123" >> $GITHUB_ENV
+        echo "WEKO_USER_EMAIL=contributor@example.org" >> $GITHUB_ENV  # gitleaks:allow
+        echo "WEKO_USER_PASSWORD=uspass123" >> $GITHUB_ENV
+        echo "WEKO_INSTITUTION_NAME=Virginia Tech [Test]" >> $GITHUB_ENV
+        echo "WEKO_INDEX_NAME=Sample Index" >> $GITHUB_ENV
+        echo "IGNORE_HTTPS_ERRORS=true" >> $GITHUB_ENV
+
+    - name: Verify RDM containers can connect to WEKO via HTTPS
+      if: env.WEKO_ENABLED == 'true'
+      working-directory: RDM-osf.io
+      run: |
+        set -xeu
+        echo "=== RDM to WEKO HTTPS Connection Verification ==="
+        # web container uses requests (certifi)
+        echo "Testing web (requests)..."
+        docker-compose exec -T web python3 -c "import requests; print('CA bundle:', requests.certs.where()); r = requests.get('https://192.168.168.167', timeout=30); print('Status:', r.status_code)"
+        # wb container uses aiohttp (OpenSSL system certs)
+        echo "Testing wb (aiohttp)..."
+        cat "${{ github.workspace }}/e2e-tests/.github/scripts/verify_weko_https.py" | docker-compose exec -T wb python3
+
     - name: Install TLJH stack
       if: env.JUPYTERHUB_ENABLED == 'true'
       working-directory: e2e-tests
@@ -740,6 +762,9 @@ jobs:
     - name: Create test users and projects
       working-directory: RDM-osf.io
       run: |
+        # Setup institutions first
+        docker-compose run --rm web python3 -m scripts.populate_institutions -e test -a
+
         # Copy the setup script to the container
         docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/setup_test_data.py "$(docker-compose ps -q web)":/tmp/setup_test_data.py
         
@@ -812,6 +837,7 @@ jobs:
         skip_metadata: ${{ matrix.test-group.skip_metadata }}
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
+        weko_enabled: ${{ matrix.test-group.weko_enabled == true }}
         enable_1gb_file_upload: false
         skip_erad_completion_test: false
         storages_oauth: []
@@ -823,6 +849,9 @@ jobs:
         fi
         if [ "${JUPYTERHUB_ENABLED}" = "true" ]; then
           args+=(--jupyterhub)
+        fi
+        if [ "${WEKO_ENABLED}" = "true" ]; then
+          args+=(--weko)
         fi
 
         .github/scripts/generate_ci_config.sh "${args[@]}"

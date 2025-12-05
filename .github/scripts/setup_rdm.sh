@@ -336,6 +336,14 @@ EOL
         script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         bash "${script_dir}/setup_minio.sh" apply "${PWD}"
     fi
+
+    if [ "${WEKO_ENABLED:-false}" = "true" ]; then
+        local script_dir
+        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        python3 "${script_dir}/weko_setup_cert.py" \
+            "${PWD}/docker-compose.override.yml" \
+            "${script_dir}/../../../weko/nginx/keys/server.crt"
+    fi
 }
 
 # Function to run Django migrations

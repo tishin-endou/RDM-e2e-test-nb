@@ -51,6 +51,16 @@ class TestRunner:
         self.tljh_url = None
         self.tljh_username = None
         self.tljh_password = None
+        self.weko_enabled = False
+        # WEKO / JAIRO Cloud specific parameters
+        self.weko_url = None
+        self.weko_admin_email = None
+        self.weko_admin_password = None
+        self.weko_user_email = None
+        self.weko_user_password = None
+        self.weko_institution_name = None
+        self.weko_index_name = None
+        self.ignore_https_errors = False
         
         # Exclude notebooks
         self.exclude_notebooks = []
@@ -303,7 +313,7 @@ class TestRunner:
     def run_jupyterhub_tests(self):
         """Run BinderHub/TLJH related tests."""
         print('\n=== JupyterHub Tests ===')
-        if not getattr(self, 'jupyterhub_enabled', False):
+        if not self.jupyterhub_enabled:
             print('Skipping JupyterHub tests (jupyterhub_enabled=false)')
             return
 
@@ -323,6 +333,45 @@ class TestRunner:
                 tljh_url=self.tljh_url,
                 tljh_username=self.tljh_username,
                 tljh_password=self.tljh_password,
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
+    def run_weko_tests(self):
+        """Run WEKO addon tests."""
+        print('\n=== WEKO Tests ===')
+        if not self.weko_enabled:
+            print('Skipping WEKO tests (weko_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in [
+                'weko_url', 'weko_admin_email', 'weko_admin_password',
+                'weko_user_email', 'weko_user_password',
+                'weko_institution_name', 'weko_index_name'
+            ]
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print('Error: Missing WEKO parameters: ' + ', '.join(missing_params))
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-WEKOアドオン.ipynb',
+                admin_rdm_url=self.admin_rdm_url,
+                weko_url=self.weko_url,
+                weko_admin_email=self.weko_admin_email,
+                weko_admin_password=self.weko_admin_password,
+                weko_user_email=self.weko_user_email,
+                weko_user_password=self.weko_user_password,
+                weko_institution_name=self.weko_institution_name,
+                weko_index_name=self.weko_index_name,
+                ignore_https_errors=self.ignore_https_errors,
+                idp_name_2=getattr(self, 'idp_name_2', None),
+                idp_username_2=getattr(self, 'idp_username_2', None),
+                idp_password_2=getattr(self, 'idp_password_2', None),
                 skip_failed_test=self.skip_failed_test,
                 exclude_notebooks=self.exclude_notebooks,
             )
@@ -426,6 +475,7 @@ class TestRunner:
         self.run_metadata_tests()
         self.run_admin_tests()
         self.run_jupyterhub_tests()
+        self.run_weko_tests()
         
         result_notebooks = [result_notebook for result_notebook in self.result_notebooks if result_notebook is not None]
         

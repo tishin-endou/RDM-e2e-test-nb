@@ -13,6 +13,7 @@ BASE_CONFIG=$2
 shift 2
 MINIO=false
 JUPYTERHUB=false
+WEKO=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -21,6 +22,9 @@ for arg in "$@"; do
       ;;
     --jupyterhub)
       JUPYTERHUB=true
+      ;;
+    --weko)
+      WEKO=true
       ;;
     *)
       echo "Unknown argument: ${arg}" >&2
@@ -82,6 +86,30 @@ else
   cat >> "${OUTPUT}" <<'EOF'
 
 jupyterhub_enabled: false
+EOF
+fi
+
+if [[ "${WEKO}" == "true" ]]; then
+  WEKO_URL_VALUE=${WEKO_URL:-http://localhost}
+  WEKO_ADMIN_EMAIL_VALUE=${WEKO_ADMIN_EMAIL:-}
+  WEKO_ADMIN_PASSWORD_VALUE=${WEKO_ADMIN_PASSWORD:-}
+  WEKO_USER_EMAIL_VALUE=${WEKO_USER_EMAIL:-}
+  WEKO_USER_PASSWORD_VALUE=${WEKO_USER_PASSWORD:-}
+  WEKO_INSTITUTION_NAME_VALUE=${WEKO_INSTITUTION_NAME:-}
+  WEKO_INDEX_NAME_VALUE=${WEKO_INDEX_NAME:-'Sample Index'}
+  IGNORE_HTTPS_ERRORS_VALUE=${IGNORE_HTTPS_ERRORS:-false}
+
+  cat >> "${OUTPUT}" <<EOF
+
+# WEKO / JAIRO Cloud settings
+weko_url: '${WEKO_URL_VALUE}'
+weko_admin_email: '${WEKO_ADMIN_EMAIL_VALUE}'
+weko_admin_password: '${WEKO_ADMIN_PASSWORD_VALUE}'
+weko_user_email: '${WEKO_USER_EMAIL_VALUE}'
+weko_user_password: '${WEKO_USER_PASSWORD_VALUE}'
+weko_institution_name: '${WEKO_INSTITUTION_NAME_VALUE}'
+weko_index_name: '${WEKO_INDEX_NAME_VALUE}'
+ignore_https_errors: ${IGNORE_HTTPS_ERRORS_VALUE}
 EOF
 fi
 

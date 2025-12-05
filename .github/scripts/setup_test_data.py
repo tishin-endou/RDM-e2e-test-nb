@@ -1,9 +1,28 @@
 from django.utils import timezone
-from osf.models import OSFUser, Node
+from osf.models import OSFUser, Node, Institution
+
+INSTITUTION_NAME = 'Virginia Tech [Test]'
 
 test_users = [
-    {'username': 'testuser1@example.com', 'fullname': 'Test User 1', 'password': 'testpass123', 'is_superuser': True},
-    {'username': 'testuser2@example.com', 'fullname': 'Test User 2', 'password': 'testpass456'},
+    {
+        'username': 'testuser1@example.com',
+        'fullname': 'Test User 1',
+        'given_name': 'Test',
+        'family_name': 'User 1',
+        'given_name_ja': 'テスト',
+        'family_name_ja': 'ユーザー1',
+        'password': 'testpass123',
+        'is_superuser': True,
+    },
+    {
+        'username': 'testuser2@example.com',
+        'fullname': 'Test User 2',
+        'given_name': 'Test',
+        'family_name': 'User 2',
+        'given_name_ja': 'テスト',
+        'family_name_ja': 'ユーザー2',
+        'password': 'testpass456',
+    },
 ]
 
 for user_data in test_users:
@@ -13,6 +32,10 @@ for user_data in test_users:
         user = OSFUser(
             username=username,
             fullname=user_data['fullname'],
+            given_name=user_data['given_name'],
+            family_name=user_data['family_name'],
+            given_name_ja=user_data['given_name_ja'],
+            family_name_ja=user_data['family_name_ja'],
             is_active=True,
             date_registered=timezone.now()
         )
@@ -22,6 +45,20 @@ for user_data in test_users:
         user.is_registered = True
         user.date_confirmed = timezone.now()
         user.have_email = True
+        # Set jobs for profile completion (required for is_full_account_required_info)
+        # Structure must match unserialize_job in website/profile/views.py
+        user.jobs = [{
+            'institution': INSTITUTION_NAME,
+            'department': None,
+            'institution_ja': INSTITUTION_NAME,
+            'department_ja': None,
+            'title': None,
+            'startMonth': None,
+            'startYear': None,
+            'endMonth': None,
+            'endYear': None,
+            'ongoing': None,
+        }]
         # Set superuser if specified
         if user_data.get('is_superuser', False):
             user.is_superuser = True
@@ -62,3 +99,14 @@ for user_data in test_users:
         # Output for CI config
         print(f"PROJECT_ID_{username}: {project._id}")
         print(f"PROJECT_NAME_{username}: {project.title}")
+
+# Affiliate users with institution
+inst = Institution.objects.get(name=INSTITUTION_NAME)
+for user_data in test_users:
+    user = OSFUser.objects.get(username=user_data['username'])
+    if inst not in user.affiliated_institutions.all():
+        user.affiliated_institutions.add(inst)
+        user.save()
+        print(f"Affiliated {user.username} with {inst.name}")
+    else:
+        print(f"User {user.username} already affiliated with {inst.name}")

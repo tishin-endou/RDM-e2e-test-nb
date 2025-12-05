@@ -43,13 +43,35 @@ case "$COMMAND" in
     # Replace WEKO's nginx files with our simplified version
     cp "${SCRIPT_DIR}/../../docker/weko-nginx/Dockerfile" "${WEKO_ROOT}/nginx/Dockerfile"
     cp "${SCRIPT_DIR}/../../docker/weko-nginx/weko.conf" "${WEKO_ROOT}/nginx/weko.conf"
+    # Apply patch to allow HTTP redirect URIs when OAUTHLIB_INSECURE_TRANSPORT is set
+    patch -d "${WEKO_ROOT}" -p1 < "${SCRIPT_DIR}/../patches/weko-oauth2-insecure-transport.patch"
+    # Generate self-signed certificate for WEKO nginx with SAN for IP address
+    mkdir -p "${WEKO_ROOT}/nginx/keys"
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout "${WEKO_ROOT}/nginx/keys/server.key" \
+      -out "${WEKO_ROOT}/nginx/keys/server.crt" \
+      -subj "/CN=192.168.168.167" \
+      -addext "subjectAltName=IP:192.168.168.167"
     ;;
   install)
     pushd "${WEKO_ROOT}"
     bash install.sh
     popd
-    wait_for_url "http://localhost"
-    wait_for_url "https://localhost"
+    wait_for_url "http://192.168.168.167"
+    wait_for_url "https://192.168.168.167"
+
+    # Verify WEKO nginx is using our generated certificate
+    echo "=== WEKO Certificate Verification ==="
+    expected_fingerprint=$(openssl x509 -in "${WEKO_ROOT}/nginx/keys/server.crt" -noout -fingerprint -sha256)
+    actual_fingerprint=$(echo | openssl s_client -connect 192.168.168.167:443 | openssl x509 -noout -fingerprint -sha256)
+    echo "Expected: ${expected_fingerprint}"
+    echo "Actual:   ${actual_fingerprint}"
+    if [ "${expected_fingerprint}" = "${actual_fingerprint}" ]; then
+      echo "Certificate verification: OK"
+    else
+      echo "Certificate verification: MISMATCH"
+      exit 1
+    fi
     ;;
   down)
     pushd "${WEKO_ROOT}"
