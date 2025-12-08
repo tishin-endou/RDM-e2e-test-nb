@@ -117,6 +117,7 @@ class FileMetadataForm:
         # Basic info
         "データ No.": FieldType.INPUT,
         "データの名称 (日本語)": FieldType.INPUT,
+        #"データの名称または論文表題 (日本語)": FieldType.INPUT,
         "Title (English)": FieldType.INPUT,
         "掲載日・掲載更新日": FieldType.INPUT_DIRECT,
         "データの説明 (日本語)": FieldType.TEXTAREA,
@@ -185,6 +186,10 @@ class FileMetadataForm:
                     f'//label[contains(text(), "{label}")]/../following-sibling::textarea[1]'
                 )
             case FieldType.SELECT:
+                if label == "アクセス権":
+                    return self.page.locator(
+                        f'//label[text()="{label}"]/../following-sibling::select[1]'
+                    )
                 return self.page.locator(
                     f'//label[contains(text(), "{label}")]/../following-sibling::select[1]'
                 )
@@ -251,19 +256,19 @@ class FileMetadataForm:
     async def click_table_remove_row(self, label: str, row_index: int) -> None:
         """Click the remove button for a specific row (0-indexed)."""
         locator = self._get_locator(label, FieldType.TABLE)
-        row = locator.locator(f"table tbody tr:nth-child({row_index + 1})")
+        row = locator.locator(f"table tbody tr:nth-of-type({row_index + 1})")
         await row.locator(".remove-row i, span.remove-row i").click()
 
     async def fill_table_cell(self, label: str, row_index: int, col_index: int, value: str) -> None:
         """Fill a specific cell in a table field (0-indexed)."""
         locator = self._get_locator(label, FieldType.TABLE)
-        row = locator.locator(f"table tbody tr:nth-child({row_index + 1})")
-        cell_input = row.locator(f"td:nth-child({col_index + 1}) input")
+        row = locator.locator(f"table tbody tr:nth-of-type({row_index + 1})")
+        cell_input = row.locator(f"td:nth-of-type({col_index + 1}) input")
         await cell_input.fill(value)
 
     async def get_table_cell(self, label: str, row_index: int, col_index: int) -> str:
         """Get value from a specific cell in a table field (0-indexed)."""
         locator = self._get_locator(label, FieldType.TABLE)
-        row = locator.locator(f"table tbody tr:nth-child({row_index + 1})")
-        cell_input = row.locator(f"td:nth-child({col_index + 1}) input")
+        row = locator.locator(f"table tbody tr:nth-of-type({row_index + 1})")
+        cell_input = row.locator(f"td:nth-of-type({col_index + 1}) input")
         return await cell_input.input_value()
