@@ -174,23 +174,23 @@ class FileMetadataForm:
         match field_type:
             case FieldType.INPUT:
                 return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::div//input'
+                    f'//label[contains(text(), "{label}")]/../following-sibling::div[1]//input'
                 )
             case FieldType.INPUT_DIRECT:
                 return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::input'
+                    f'//label[contains(text(), "{label}")]/../following-sibling::input[1]'
                 )
             case FieldType.TEXTAREA:
                 return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::textarea'
+                    f'//label[contains(text(), "{label}")]/../following-sibling::textarea[1]'
                 )
             case FieldType.SELECT:
                 return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::select'
+                    f'//label[contains(text(), "{label}")]/../following-sibling::select[1]'
                 )
             case FieldType.TABLE:
                 return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::div'
+                    f'//label[contains(text(), "{label}")]/../following-sibling::div[1]'
                 )
             case _:
                 raise ValueError(f"Unsupported field type: {field_type}")
