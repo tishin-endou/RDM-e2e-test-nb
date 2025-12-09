@@ -72,6 +72,23 @@ case "$COMMAND" in
       echo "Certificate verification: MISMATCH"
       exit 1
     fi
+
+    # Validate SWORD mappings
+    echo "=== SWORD Mapping Validation ==="
+    docker compose -f "${compose_file}" exec -T web invenio shell -c '
+from weko_records.api import JsonldMapping
+from weko_search_ui.mapper import JsonLdMapper
+import json, sys
+objs = JsonldMapping.get_all()
+results = []
+invalid = 0
+for obj in objs:
+    errs = JsonLdMapper(obj.item_type_id, obj.mapping).validate()
+    results.append({"mapping_id": obj.id, "item_type_id": obj.item_type_id, "name": obj.name, "valid": errs is None, "errors": errs or []})
+    invalid += 0 if errs is None else 1
+print(json.dumps(results, ensure_ascii=False, indent=2))
+sys.exit(0 if invalid == 0 else 1)
+'
     ;;
   down)
     pushd "${WEKO_ROOT}"

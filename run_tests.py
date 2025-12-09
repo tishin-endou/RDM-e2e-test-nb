@@ -60,6 +60,8 @@ class TestRunner:
         self.weko_user_password = None
         self.weko_institution_name = None
         self.weko_index_name = None
+        self.weko_docker_compose_path = None
+        self.sword_mapping_id = 30002
         self.ignore_https_errors = False
         
         # Exclude notebooks
@@ -349,7 +351,8 @@ class TestRunner:
             name for name in [
                 'weko_url', 'weko_admin_email', 'weko_admin_password',
                 'weko_user_email', 'weko_user_password',
-                'weko_institution_name', 'weko_index_name'
+                'weko_institution_name', 'weko_index_name',
+                'weko_docker_compose_path'
             ]
             if not getattr(self, name, None)
         ]
@@ -368,6 +371,8 @@ class TestRunner:
                 weko_user_password=self.weko_user_password,
                 weko_institution_name=self.weko_institution_name,
                 weko_index_name=self.weko_index_name,
+                weko_docker_compose_path=self.weko_docker_compose_path,
+                sword_mapping_id=self.sword_mapping_id,
                 ignore_https_errors=self.ignore_https_errors,
                 idp_name_2=getattr(self, 'idp_name_2', None),
                 idp_username_2=getattr(self, 'idp_username_2', None),
