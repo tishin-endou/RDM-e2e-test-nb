@@ -220,11 +220,11 @@ BINDERHUB_DEPLOYMENT_IMAGES = [
 BINDERHUB_EOF
     echo "BinderHub configuration files created"
 
-    # Create weko settings
-    cat > ./addons/weko/settings/local.py << 'WEKO_EOF'
-DEFAULT_APPLICATION_SCOPES = ['item:create deposit:actions deposit:write index:create user:activity user:email']
-WEKO_EOF
-    echo "WEKO configuration files created"
+    # Apply WEKO default_scopes patch to add item:create scope
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    patch -p1 < "${script_dir}/../patches/weko-default-scopes.patch"
+    echo "WEKO default_scopes patch applied"
 
     echo "Configuration files setup completed"
 }

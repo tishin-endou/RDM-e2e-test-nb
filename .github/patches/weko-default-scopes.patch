@@ -1,0 +1,11 @@
+--- a/addons/weko/provider.py
++++ b/addons/weko/provider.py
+@@ -61,7 +61,7 @@ class WEKOProvider(ExternalProvider):
+
+     auth_url_base = None
+     callback_url = None
+-    default_scopes = ['deposit:actions deposit:write index:create user:activity user:email']
++    default_scopes = ['item:create deposit:actions deposit:write index:create user:activity user:email']
+     refresh_time = weko_settings.REFRESH_TIME
+
+     def __init__(self, account=None, host=None, username=None, password=None):
