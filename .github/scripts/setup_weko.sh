@@ -73,22 +73,37 @@ case "$COMMAND" in
       exit 1
     fi
 
-    # Validate SWORD mappings
-    echo "=== SWORD Mapping Validation ==="
-    docker compose -f "${compose_file}" exec -T web invenio shell -c '
+    # Update SWORD mapping for item type 30002
+    echo "=== Updating SWORD Mapping 30002 ==="
+    mapping_json=$(cat "${SCRIPT_DIR}/../patches/sword_mapping_30002.json")
+    docker compose -f "${compose_file}" exec -T web invenio shell -c "
+from weko_records.api import JsonldMapping
+import json
+mapping = json.loads('''${mapping_json}''')
+obj = JsonldMapping.get_mapping_by_id(30002)
+obj.mapping = mapping
+from invenio_db import db
+db.session.commit()
+print('Updated mapping 30002')
+"
+
+    # Validate SWORD mapping 30002
+    echo "=== SWORD Mapping Validation (30002) ==="
+    validation_result=$(docker compose -f "${compose_file}" exec -T web invenio shell -c '
 from weko_records.api import JsonldMapping
 from weko_search_ui.mapper import JsonLdMapper
-import json, sys
-objs = JsonldMapping.get_all()
-results = []
-invalid = 0
-for obj in objs:
-    errs = JsonLdMapper(obj.item_type_id, obj.mapping).validate()
-    results.append({"mapping_id": obj.id, "item_type_id": obj.item_type_id, "name": obj.name, "valid": errs is None, "errors": errs or []})
-    invalid += 0 if errs is None else 1
-print(json.dumps(results, ensure_ascii=False, indent=2))
-sys.exit(0 if invalid == 0 else 1)
-'
+import json
+obj = JsonldMapping.get_mapping_by_id(30002)
+errs = JsonLdMapper(obj.item_type_id, obj.mapping).validate()
+result = {"mapping_id": obj.id, "item_type_id": obj.item_type_id, "name": obj.name, "valid": errs is None, "errors": errs or []}
+print(json.dumps({"result": result, "invalid": 0 if errs is None else 1}, ensure_ascii=False))
+')
+    echo "${validation_result}"
+    invalid_count=$(echo "${validation_result}" | python3 -c "import sys, json; print(json.load(sys.stdin)['invalid'])")
+    if [[ "${invalid_count}" -gt 0 ]]; then
+      echo "SWORD mapping validation failed: ${invalid_count} invalid mapping(s)" >&2
+      exit 1
+    fi
     ;;
   down)
     pushd "${WEKO_ROOT}"
