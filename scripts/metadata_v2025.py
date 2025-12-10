@@ -116,8 +116,7 @@ class FileMetadataForm:
     FIELDS: Dict[str, FieldType] = {
         # Basic info
         "データ No.": FieldType.INPUT,
-        "データの名称 (日本語)": FieldType.INPUT,
-        #"データの名称または論文表題 (日本語)": FieldType.INPUT,
+        "データの名称または論文表題 (日本語)": FieldType.INPUT,
         "Title (English)": FieldType.INPUT,
         "掲載日・掲載更新日": FieldType.INPUT_DIRECT,
         "データの説明 (日本語)": FieldType.TEXTAREA,
