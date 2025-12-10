@@ -220,12 +220,6 @@ BINDERHUB_DEPLOYMENT_IMAGES = [
 BINDERHUB_EOF
     echo "BinderHub configuration files created"
 
-    # Apply WEKO default_scopes patch to add item:create scope
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    patch -p1 < "${script_dir}/../patches/weko-default-scopes.patch"
-    echo "WEKO default_scopes patch applied"
-
     echo "Configuration files setup completed"
 }
 
