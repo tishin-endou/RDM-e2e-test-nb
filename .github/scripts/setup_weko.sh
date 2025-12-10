@@ -45,6 +45,8 @@ case "$COMMAND" in
     cp "${SCRIPT_DIR}/../../docker/weko-nginx/weko.conf" "${WEKO_ROOT}/nginx/weko.conf"
     # Apply patch to allow HTTP redirect URIs when OAUTHLIB_INSECURE_TRANSPORT is set
     patch -d "${WEKO_ROOT}" -p1 < "${SCRIPT_DIR}/../patches/weko-oauth2-insecure-transport.patch"
+    # Apply patch to fix chardet TypeError on ZIP filename handling
+    patch -d "${WEKO_ROOT}" -p1 < "${SCRIPT_DIR}/../patches/weko-chardet-fix.patch"
     # Generate self-signed certificate for WEKO nginx with SAN for IP address
     mkdir -p "${WEKO_ROOT}/nginx/keys"
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
