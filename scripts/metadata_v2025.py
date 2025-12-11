@@ -17,7 +17,7 @@ Design principles:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict
+from typing import Any, Dict
 
 
 class FieldType(Enum):
@@ -48,18 +48,19 @@ class ProjectMetadataForm:
         "プロジェクトの分野": FieldType.POWER_SELECT,
     }
 
-    def __init__(self, page):
+    def __init__(self, page, parent_locator=None):
         self.page = page
+        self._root = parent_locator or page
 
     def _get_locator(self, label: str, field_type: FieldType):
         base = "//*"
         match field_type:
             case FieldType.INPUT:
-                return self.page.locator(
+                return self._root.locator(
                     f'{base}[contains(text(), "{label}")]/../following-sibling::div[1]//input'
                 )
             case FieldType.POWER_SELECT:
-                return self.page.locator(
+                return self._root.locator(
                     f'{base}[contains(text(), "{label}")]/../following-sibling::div[1]'
                 )
             case _:
@@ -81,7 +82,7 @@ class ProjectMetadataForm:
                 await locator.fill(value)
             case FieldType.POWER_SELECT:
                 await locator.locator(".ember-power-select-trigger").click()
-                option = self.page.locator(
+                option = self._root.locator(
                     f'//li[contains(@class, "ember-power-select-option") and contains(., "{value}")]'
                 )
                 await option.click()
@@ -102,7 +103,7 @@ class ProjectMetadataForm:
         field_type = self.FIELDS[label]
         locator = self._get_locator(label, field_type)
         await locator.locator(".ember-power-select-trigger").click()
-        search = self.page.locator(".ember-power-select-search-input")
+        search = self._root.locator(".ember-power-select-search-input")
         await search.fill(value)
         await search.press("Enter")
 
@@ -115,6 +116,7 @@ class FileMetadataForm:
 
     FIELDS: Dict[str, FieldType] = {
         # Basic info
+        "ファイル種別": FieldType.SELECT,
         "データ No.": FieldType.INPUT,
         "データの名称または論文表題 (日本語)": FieldType.INPUT,
         "Title (English)": FieldType.INPUT,
@@ -139,10 +141,22 @@ class FileMetadataForm:
         "リポジトリURL・DOIリンク": FieldType.INPUT,
         # Creators
         "データ作成者": FieldType.TABLE,
+        "著者名": FieldType.TABLE,
         # Hosting institution
         "データ管理機関 (日本語)": FieldType.INPUT,
         "Hosting institution (English)": FieldType.INPUT,
         "データ管理機関コード": FieldType.INPUT,
+        # Bibliographic specific fields
+        "論文（出版社版）のDOI": FieldType.INPUT,
+        "論文の種類": FieldType.SELECT,
+        "掲載誌名 (日本語)": FieldType.INPUT,
+        "Journal Name (English)": FieldType.INPUT,
+        "発行年月": FieldType.INPUT,
+        "巻": FieldType.INPUT,
+        "号": FieldType.INPUT,
+        "掲載ページ (開始)": FieldType.INPUT,
+        "掲載ページ (終了)": FieldType.INPUT,
+        "学術論文を掲載した「機関リポジトリ等の情報基盤」のDOI": FieldType.INPUT,
         # Data manager
         "データ管理者の種類": FieldType.SELECT,
         "データ管理者の e-Rad 研究者番号": FieldType.INPUT,
@@ -159,42 +173,51 @@ class FileMetadataForm:
         "Remarks (English)": FieldType.TEXTAREA,
         # Metadata access
         "メタデータのアクセス権": FieldType.SELECT,
+        # Publication specific extra
+        "査読の有無": FieldType.SELECT,
+        "版情報": FieldType.SELECT,
     }
 
-    def __init__(self, page):
+    def __init__(self, page, parent_locator=None):
         self.page = page
+        self._root = parent_locator or page
 
     def _get_locator(self, label: str, field_type: FieldType):
         # Special case: 概略データ量 has different xpath
         if label == "概略データ量":
-            return self.page.locator(
+            return self._root.locator(
                 '//label[contains(text(), "概略データ量")]/../..//input[contains(@class, "form-control")]'
             )
+        exact_labels = {"号"}
+        if label in exact_labels:
+            label_xpath = f'//label[normalize-space(.) = "{label}"]'
+        else:
+            label_xpath = f'//label[contains(text(), "{label}")]'
 
         match field_type:
             case FieldType.INPUT:
-                return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::div[1]//input'
+                return self._root.locator(
+                    f'{label_xpath}/../following-sibling::div[1]//input'
                 )
             case FieldType.INPUT_DIRECT:
-                return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::input[1]'
+                return self._root.locator(
+                    f'{label_xpath}/../following-sibling::input[1]'
                 )
             case FieldType.TEXTAREA:
-                return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::textarea[1]'
+                return self._root.locator(
+                    f'{label_xpath}/../following-sibling::textarea[1]'
                 )
             case FieldType.SELECT:
                 if label == "アクセス権":
-                    return self.page.locator(
-                        f'//label[text()="{label}"]/../following-sibling::select[1]'
+                    return self._root.locator(
+                        f'//label[normalize-space(text())="{label}"]/../following-sibling::select[1]'
                     )
-                return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::select[1]'
+                return self._root.locator(
+                    f'{label_xpath}/../following-sibling::select[1]'
                 )
             case FieldType.TABLE:
-                return self.page.locator(
-                    f'//label[contains(text(), "{label}")]/../following-sibling::div[1]'
+                return self._root.locator(
+                    f'{label_xpath}/../following-sibling::div[1]'
                 )
             case _:
                 raise ValueError(f"Unsupported field type: {field_type}")
@@ -271,3 +294,32 @@ class FileMetadataForm:
         row = locator.locator(f"table tbody tr:nth-of-type({row_index + 1})")
         cell_input = row.locator(f"td:nth-of-type({col_index + 1}) input")
         return await cell_input.input_value()
+
+    async def fill_author(self, author: Dict[str, Any]) -> None:
+        """Add an author row and fill all author fields."""
+        container = self.get_locator("著者名")
+        await self.click_table_add_row("著者名")
+
+        edit_rows = container.locator('.metadata-edit-mode')
+        row_count = await edit_rows.count()
+        if row_count == 0:
+            raise AssertionError("No edit rows found for authors")
+        panel = edit_rows.nth(row_count - 1)
+        await panel.wait_for(state="visible")
+
+        await panel.locator('label:has-text("e-Rad 研究者番号") + div input').fill(author['number'])
+
+        ja_inputs = panel.locator('label:has-text("名前(日本語)") + div table input')
+        await ja_inputs.nth(0).fill(author['name_ja']['last'])
+        await ja_inputs.nth(1).fill(author['name_ja']['middle'])
+        await ja_inputs.nth(2).fill(author['name_ja']['first'])
+
+        en_inputs = panel.locator('label:has-text("Name (English)") + div table input')
+        await en_inputs.nth(0).fill(author['name_en']['last'])
+        await en_inputs.nth(1).fill(author['name_en']['middle'])
+        await en_inputs.nth(2).fill(author['name_en']['first'])
+
+        await panel.locator('label:has-text("所属機関名(日本語)") + div input').fill(author['affiliation_ja'])
+        await panel.locator('label:has-text("所属機関名(英語)") + div input').fill(author['affiliation_en'])
+
+        await panel.locator('.hide-edit-row').click()

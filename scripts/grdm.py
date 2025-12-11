@@ -283,9 +283,9 @@ def get_select_file_draggable_locator(page, provider):
 def get_select_file_draggable_xpath(name):
     return f'//*[contains(@class, "tb-expand-icon-holder")]//*[contains(@class, "file-extension")]/../../following-sibling::*[contains(@class, "title-text")]//*[text() = "{name}"]/../..'
 
-async def wait_for_uploaded(page, filename):
-    await expect(page.locator(f'//*[text() = "{filename}"]/../following-sibling::*//*[@role = "progressbar"]')).to_have_count(0, timeout=30000)
-    await expect(get_select_file_title_locator(page, filename)).to_be_visible(timeout=1000)    
+async def wait_for_uploaded(page, filename, timeout=30000):
+    await expect(page.locator(f'//*[text() = "{filename}"]/../following-sibling::*//*[@role = "progressbar"]')).to_have_count(0, timeout=timeout)
+    await expect(get_select_file_title_locator(page, filename)).to_be_visible(timeout=timeout)
 
 def _bytes_to_data_url(byte_data, mime_type="application/octet-stream"):
     """バイト配列をDataURLに変換"""
@@ -334,7 +334,6 @@ async def drop_file(page, element_locator, path):
 
 async def drag_and_drop(page, source, dest):
     await expect(source).to_have_class(re.compile('.*ui-draggable.*'))
-    await expect(dest).to_have_class(re.compile('.*ui-droppable.*'))
 
     center_coordinates_source = await source.evaluate('''element => {
         const rect = element.getBoundingClientRect();

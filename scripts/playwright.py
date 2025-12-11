@@ -1,4 +1,5 @@
 # ユーティリティ関数群
+import asyncio
 from datetime import datetime
 import os
 import shutil
@@ -134,11 +135,20 @@ async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chro
     console_messages = []
     return (current_session_id, temp_dir)
 
-async def finish_pw_context(screenshot=False, last_path=None):
+async def finish_pw_context(screenshot=False, last_path=None, timeout=180):
     global current_browser
-    await _finish_pw_context(screenshot=screenshot, last_path=last_path)
+    try:
+        await asyncio.wait_for(
+            _finish_pw_context(screenshot=screenshot, last_path=last_path),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        print(f'finish_pw_context timed out after {timeout} seconds', file=sys.stderr)
     if current_browser is not None:
-        await current_browser.close()
+        try:
+            await asyncio.wait_for(current_browser.close(), timeout=30)
+        except asyncio.TimeoutError:
+            print('browser.close() timed out', file=sys.stderr)
         current_browser = None
 
 async def save_screenshot(path):

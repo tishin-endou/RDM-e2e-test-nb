@@ -47,6 +47,8 @@ case "$COMMAND" in
     patch -d "${WEKO_ROOT}" -p1 < "${SCRIPT_DIR}/../patches/weko-oauth2-insecure-transport.patch"
     # Apply patch to fix chardet TypeError on ZIP filename handling
     patch -d "${WEKO_ROOT}" -p1 < "${SCRIPT_DIR}/../patches/weko-chardet-fix.patch"
+    # Apply patch to delay file content extraction task to avoid ES version conflict
+    patch -d "${WEKO_ROOT}" -p1 < "${SCRIPT_DIR}/../patches/weko-delay-file-content-task.patch"
     # Generate self-signed certificate for WEKO nginx with SAN for IP address
     mkdir -p "${WEKO_ROOT}/nginx/keys"
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -88,6 +90,44 @@ from invenio_db import db
 db.session.commit()
 print('Updated mapping 30002')
 "
+
+    # Grant contributor access to Sample Index
+    echo "=== Granting Contributor Access to Sample Index ==="
+    docker compose -f "${compose_file}" exec -T web invenio shell -c '
+from weko_index_tree.models import Index
+from weko_index_tree.utils import delete_index_trees_from_redis
+from invenio_db import db
+index = Index.query.filter_by(index_name_english="Sample Index").first()
+if not index:
+    raise Exception("Sample Index not found")
+print(f"Before: contribute_role={index.contribute_role}, browsing_role={index.browsing_role}, public_state={index.public_state}")
+index.contribute_role = "1,2,3,4,-98,-99"
+index.browsing_role = "1,2,3,4,-98,-99"
+index.public_state = True
+db.session.commit()
+# Clear Redis cache so API returns fresh data
+for lang in ["en", "ja"]:
+    delete_index_trees_from_redis(lang)
+print(f"After: contribute_role={index.contribute_role}, browsing_role={index.browsing_role}, public_state={index.public_state}")
+'
+
+    # Grant index-tree-access permission to Contributor role
+    echo "=== Granting index-tree-access to Contributor ==="
+    docker compose -f "${compose_file}" exec -T web invenio shell -c '
+from invenio_access.models import ActionRoles, Role
+from invenio_db import db
+role = Role.query.filter_by(name="Contributor").first()
+if not role:
+    raise Exception("Contributor role not found")
+existing = ActionRoles.query.filter_by(action="index-tree-access", role_id=role.id).first()
+if existing:
+    print(f"index-tree-access already granted to Contributor (role_id={role.id})")
+else:
+    ar = ActionRoles(action="index-tree-access", role_id=role.id)
+    db.session.add(ar)
+    db.session.commit()
+    print(f"Granted index-tree-access to Contributor (role_id={role.id})")
+'
 
     # Validate SWORD mapping 30002
     echo "=== SWORD Mapping Validation (30002) ==="
