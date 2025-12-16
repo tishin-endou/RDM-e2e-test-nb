@@ -41,15 +41,15 @@ case "$COMMAND" in
     sudo modprobe fuse
 
     # Pull the repo2docker image
-    sudo docker pull gcr.io/nii-ap-ops/repo2docker:2025.10.0
-    sudo docker pull gcr.io/nii-ap-ops/rdmfs:2025.10.0
+    sudo docker pull "${REPO2DOCKER_IMAGE}"
+    sudo docker pull "${RDMFS_IMAGE}"
 
-    # Install TLJH 1.0
+    # Install TLJH
     curl -L https://tljh.jupyter.org/bootstrap.py \
       | sudo python3 - \
-        --version 1.0.0 \
+        --version "${TLJH_VERSION}" \
         --admin admin:change-your-password \
-        --plugin git+https://github.com/RCOSDP/CS-tljh-repo2docker.git@master
+        --plugin "git+https://github.com/${TLJH_PLUGIN%%@*}.git@${TLJH_PLUGIN#*@}"
 
     # Workaround: upgrade to the latest version of jupyterhub
     sudo /opt/tljh/hub/bin/pip install --upgrade jupyterhub\<5

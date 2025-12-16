@@ -43,6 +43,22 @@ on:
         description: 'Custom WaterButler image (default: niicloudoperation/rdm-waterbutler:latest)'
         required: false
         default: ''
+      tljh_version:
+        description: 'TLJH version (default: 1.0.0)'
+        required: false
+        default: ''
+      tljh_plugin:
+        description: 'tljh-repo2docker plugin (default: RCOSDP/CS-tljh-repo2docker@master)'
+        required: false
+        default: ''
+      tljh_repo2docker_image:
+        description: 'repo2docker Docker image (default: gcr.io/nii-ap-ops/repo2docker:2025.10.0)'
+        required: false
+        default: ''
+      tljh_rdmfs_image:
+        description: 'RDMFS Docker image (default: gcr.io/nii-ap-ops/rdmfs:2025.10.0)'
+        required: false
+        default: ''
       test_config:
         description: 'Test configuration file to use'
         required: false
@@ -550,9 +566,19 @@ jobs:
           MFR_OVERRIDE=$(grep -oP '^-\s*MFR_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           WB_OVERRIDE=$(grep -oP '^-\s*WB_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           EXCLUDE_NOTEBOOKS_OVERRIDE=$(grep -oP '^-\s*EXCLUDE_NOTEBOOKS:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d '\r' || true)
-          
+
+          # Extract TLJH parameters from PR body
+          TLJH_VERSION_OVERRIDE=$(grep -oP '^-\s*TLJH_VERSION:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          TLJH_PLUGIN_OVERRIDE=$(grep -oP '^-\s*TLJH_PLUGIN:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          TLJH_REPO2DOCKER_IMAGE_OVERRIDE=$(grep -oP '^-\s*TLJH_REPO2DOCKER_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          TLJH_RDMFS_IMAGE_OVERRIDE=$(grep -oP '^-\s*TLJH_RDMFS_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+
           # Export for use in later steps
           echo "EXCLUDE_NOTEBOOKS=$EXCLUDE_NOTEBOOKS_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_VERSION_OVERRIDE=$TLJH_VERSION_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_PLUGIN_OVERRIDE=$TLJH_PLUGIN_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_REPO2DOCKER_IMAGE_OVERRIDE=$TLJH_REPO2DOCKER_IMAGE_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_RDMFS_IMAGE_OVERRIDE=$TLJH_RDMFS_IMAGE_OVERRIDE" >> $GITHUB_ENV
           
           # Use overrides if found, otherwise defaults
           export OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
@@ -725,6 +751,11 @@ jobs:
     - name: Install TLJH stack
       if: env.JUPYTERHUB_ENABLED == 'true'
       working-directory: e2e-tests
+      env:
+        TLJH_VERSION: ${{ env.TLJH_VERSION_OVERRIDE || github.event.inputs.tljh_version || '1.0.0' }}
+        TLJH_PLUGIN: ${{ env.TLJH_PLUGIN_OVERRIDE || github.event.inputs.tljh_plugin || 'RCOSDP/CS-tljh-repo2docker@master' }}
+        REPO2DOCKER_IMAGE: ${{ env.TLJH_REPO2DOCKER_IMAGE_OVERRIDE || github.event.inputs.tljh_repo2docker_image || 'gcr.io/nii-ap-ops/repo2docker:2025.10.0' }}
+        RDMFS_IMAGE: ${{ env.TLJH_RDMFS_IMAGE_OVERRIDE || github.event.inputs.tljh_rdmfs_image || 'gcr.io/nii-ap-ops/rdmfs:2025.10.0' }}
       run: |
         .github/scripts/setup_tljh.sh install
 
