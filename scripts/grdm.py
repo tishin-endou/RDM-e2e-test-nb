@@ -367,3 +367,15 @@ async def drag_and_drop(page, source, dest):
     await page.mouse.move(center_coordinates_dest['x'], center_coordinates_dest['y'], steps=30)
     await page.wait_for_timeout(1000)
     await page.mouse.up()
+
+async def enable_addon(page, addon_name, transition_timeout=10000):
+    await page.locator('//a[text() = "アドオン"]').click()
+    await expect(page.locator('//h3[text() = "アドオンを選択"]')).to_be_visible(timeout=transition_timeout)
+    enable_locator = page.locator(f'//div[@full_name = "{addon_name}"]//a[text() = "有効にする"]')
+    if await enable_locator.count():
+        await enable_locator.click()
+        confirm_button = page.locator('//button[@data-bb-handler = "confirm"]')
+        await expect(confirm_button).to_be_visible(timeout=transition_timeout)
+        await confirm_button.click()
+    else:
+        print('Addon already enabled')
