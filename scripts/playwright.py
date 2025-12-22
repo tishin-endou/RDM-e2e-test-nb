@@ -135,7 +135,7 @@ async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chro
     console_messages = []
     return (current_session_id, temp_dir)
 
-async def finish_pw_context(screenshot=False, last_path=None, timeout=180):
+async def finish_pw_context(screenshot=False, last_path=None, timeout=30):
     global current_browser
     try:
         await asyncio.wait_for(
@@ -146,7 +146,7 @@ async def finish_pw_context(screenshot=False, last_path=None, timeout=180):
         print(f'finish_pw_context timed out after {timeout} seconds', file=sys.stderr)
     if current_browser is not None:
         try:
-            await asyncio.wait_for(current_browser.close(), timeout=30)
+            await asyncio.wait_for(current_browser.close(), timeout=10)
         except asyncio.TimeoutError:
             print('browser.close() timed out', file=sys.stderr)
         current_browser = None
