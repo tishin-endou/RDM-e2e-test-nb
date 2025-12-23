@@ -109,6 +109,23 @@ async def login(page, idp_name, idp_username, idp_password, transition_timeout=3
         # すでにIdP選択済みとみなし、ユーザー名とパスワード入力を試みる
         await _login_idp_pw(page, idp_name, idp_username, idp_password, transition_timeout=transition_timeout)
 
+async def logout(page, idp_name, transition_timeout=30000):
+    """GRDMからログアウトする"""
+    ember_profile_dropdown = page.locator('//a[@data-test-auth-dropdown-toggle]')
+    if await ember_profile_dropdown.count() > 0:
+        await ember_profile_dropdown.click()
+        await page.locator('//*[@data-test-ad-logout]').click()
+    else:
+        await page.locator('//div[@class = "nav-profile-name"]').click()
+        await page.locator('//*[contains(text(), "ログアウト")]').click()
+
+    if idp_name == 'FakeCAS':
+        await expect(page.locator('//button[@data-test-sign-in-button]')).to_be_visible(timeout=transition_timeout)
+    elif idp_name is not None:
+        await expect(page.locator('//*[@id = "dropdown_img"]')).to_be_visible(timeout=transition_timeout)
+    else:
+        await expect(page.locator('//button[text() = "ログイン"]')).to_be_visible(timeout=transition_timeout)
+
 async def _login_idp_pw(page, idp_name, idp_username, idp_password, transition_timeout=30000):
     # Shibboleth Login Page
     login_page_locators = _get_login_page_locators(idp_name)
@@ -163,7 +180,7 @@ async def expect_dashboard(page, transition_timeout=30000, retries=3):
     while remain > 0:
         try:
             # GRDMのボタンが表示されることを確認
-            await expect(page.locator('//*[text() = "プロジェクト管理者"]')).to_be_visible(timeout=transition_timeout)
+            await expect(page.locator('//*[text() = "プロジェクト管理者" or contains(text(), "まだプロジェクトがありません。")]')).to_be_visible(timeout=transition_timeout)
             break
         except:
             if remain <= 0:

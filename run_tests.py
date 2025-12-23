@@ -63,6 +63,26 @@ class TestRunner:
         self.weko_docker_compose_path = None
         self.sword_mapping_id = 30002
         self.ignore_https_errors = False
+        # Workflow specific parameters
+        self.workflow_enabled = False
+        self.gateway_base_url = None
+        # Workflow admin user parameters
+        self.idp_name_integrated_admin = None
+        self.idp_username_integrated_admin = None
+        self.idp_password_integrated_admin = None
+        self.idp_name_institutional_admin = None
+        self.idp_username_institutional_admin = None
+        self.idp_password_institutional_admin = None
+        # Non-admin user parameters (for workflow executor, etc.)
+        self.idp_name_non_admin = None
+        self.idp_username_non_admin = None
+        self.idp_password_non_admin = None
+        # Other institution user parameters
+        self.idp_name_other_institution = None
+        self.idp_username_other_institution = None
+        self.idp_password_other_institution = None
+        self.workflow_batch_project_count = 50
+        self.institution_name = None
         
         # Exclude notebooks
         self.exclude_notebooks = []
@@ -382,6 +402,60 @@ class TestRunner:
             )
         )
 
+    def run_workflow_tests(self):
+        """Run Workflow addon tests."""
+        print('\n=== Workflow Tests ===')
+        if not self.workflow_enabled:
+            print('Skipping Workflow tests (workflow_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in [
+                'gateway_base_url',
+                'idp_name_integrated_admin',
+                'idp_username_integrated_admin',
+                'idp_password_integrated_admin',
+                'idp_name_institutional_admin',
+                'idp_username_institutional_admin',
+                'idp_password_institutional_admin',
+                'idp_name_non_admin',
+                'idp_username_non_admin',
+                'idp_password_non_admin',
+                'idp_name_other_institution',
+                'idp_username_other_institution',
+                'idp_password_other_institution',
+                'institution_name',
+            ]
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print('Error: Missing Workflow parameters: ' + ', '.join(missing_params))
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-Workflowアドオン.ipynb',
+                admin_rdm_url=self.admin_rdm_url,
+                gateway_base_url=self.gateway_base_url,
+                idp_name_integrated_admin=self.idp_name_integrated_admin,
+                idp_username_integrated_admin=self.idp_username_integrated_admin,
+                idp_password_integrated_admin=self.idp_password_integrated_admin,
+                idp_name_institutional_admin=self.idp_name_institutional_admin,
+                idp_username_institutional_admin=self.idp_username_institutional_admin,
+                idp_password_institutional_admin=self.idp_password_institutional_admin,
+                idp_name_executor=self.idp_name_non_admin,
+                idp_username_executor=self.idp_username_non_admin,
+                idp_password_executor=self.idp_password_non_admin,
+                idp_name_other_institution=self.idp_name_other_institution,
+                idp_username_other_institution=self.idp_username_other_institution,
+                idp_password_other_institution=self.idp_password_other_institution,
+                batch_project_count=self.workflow_batch_project_count,
+                institution_name=self.institution_name,
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
     def check_notebook_errors(self, notebook_path):
         """Check a notebook and all its sub-notebooks recursively for execution errors."""
         all_errors = []
@@ -481,6 +555,7 @@ class TestRunner:
         self.run_admin_tests()
         self.run_jupyterhub_tests()
         self.run_weko_tests()
+        self.run_workflow_tests()
         
         result_notebooks = [result_notebook for result_notebook in self.result_notebooks if result_notebook is not None]
         

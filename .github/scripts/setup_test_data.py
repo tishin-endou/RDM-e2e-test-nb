@@ -23,6 +23,26 @@ test_users = [
         'family_name_ja': 'ユーザー2',
         'password': 'testpass456',
     },
+    {
+        'username': 'teststaff@example.com',
+        'fullname': 'Test Staff',
+        'given_name': 'Test',
+        'family_name': 'Staff',
+        'given_name_ja': 'テスト',
+        'family_name_ja': 'スタッフ',
+        'password': 'testpass789',
+        'is_staff': True,
+    },
+    {
+        'username': 'testuser3@example.com',
+        'fullname': 'Test User 3',
+        'given_name': 'Test',
+        'family_name': 'User 3',
+        'given_name_ja': 'テスト',
+        'family_name_ja': 'ユーザー3',
+        'password': 'testpass321',
+        'institution': 'Massachusetts Institute of Technology [Test]',
+    },
 ]
 
 for user_data in test_users:
@@ -47,10 +67,11 @@ for user_data in test_users:
         user.have_email = True
         # Set jobs for profile completion (required for is_full_account_required_info)
         # Structure must match unserialize_job in website/profile/views.py
+        user_institution = user_data.get('institution', INSTITUTION_NAME)
         user.jobs = [{
-            'institution': INSTITUTION_NAME,
+            'institution': user_institution,
             'department': None,
-            'institution_ja': INSTITUTION_NAME,
+            'institution_ja': user_institution,
             'department_ja': None,
             'title': None,
             'startMonth': None,
@@ -62,6 +83,9 @@ for user_data in test_users:
         # Set superuser if specified
         if user_data.get('is_superuser', False):
             user.is_superuser = True
+            user.is_staff = True
+        # Set staff if specified (without superuser)
+        elif user_data.get('is_staff', False):
             user.is_staff = True
         user.save()
         
@@ -101,9 +125,10 @@ for user_data in test_users:
         print(f"PROJECT_NAME_{username}: {project.title}")
 
 # Affiliate users with institution
-inst = Institution.objects.get(name=INSTITUTION_NAME)
 for user_data in test_users:
     user = OSFUser.objects.get(username=user_data['username'])
+    user_institution = user_data.get('institution', INSTITUTION_NAME)
+    inst = Institution.objects.get(name=user_institution)
     if inst not in user.affiliated_institutions.all():
         user.affiliated_institutions.add(inst)
         user.save()

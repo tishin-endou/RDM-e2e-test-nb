@@ -3,7 +3,7 @@ set -xeuo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat >&2 <<'USAGE'
-Usage: generate_ci_config.sh <output_path> <base_config_yaml> [--minio] [--jupyterhub]
+Usage: generate_ci_config.sh <output_path> <base_config_yaml> [--minio] [--jupyterhub] [--weko] [--flowable]
 USAGE
   exit 1
 fi
@@ -14,6 +14,7 @@ shift 2
 MINIO=false
 JUPYTERHUB=false
 WEKO=false
+FLOWABLE=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -25,6 +26,9 @@ for arg in "$@"; do
       ;;
     --weko)
       WEKO=true
+      ;;
+    --flowable)
+      FLOWABLE=true
       ;;
     *)
       echo "Unknown argument: ${arg}" >&2
@@ -114,6 +118,24 @@ weko_index_name: '${WEKO_INDEX_NAME_VALUE}'
 weko_docker_compose_path: '${WEKO_DOCKER_COMPOSE_PATH_VALUE}'
 sword_mapping_id: ${SWORD_MAPPING_ID_VALUE}
 ignore_https_errors: ${IGNORE_HTTPS_ERRORS_VALUE}
+EOF
+fi
+
+if [[ "${FLOWABLE}" == "true" ]]; then
+  GATEWAY_BASE_URL_VALUE=${GATEWAY_BASE_URL:-http://192.168.168.167:8088/}
+  WORKFLOW_BATCH_PROJECT_COUNT_VALUE=${WORKFLOW_BATCH_PROJECT_COUNT:-50}
+
+  cat >> "${OUTPUT}" <<EOF
+
+# Flowable Workflow settings
+workflow_enabled: true
+gateway_base_url: '${GATEWAY_BASE_URL_VALUE}'
+workflow_batch_project_count: ${WORKFLOW_BATCH_PROJECT_COUNT_VALUE}
+EOF
+else
+  cat >> "${OUTPUT}" <<'EOF'
+
+workflow_enabled: false
 EOF
 fi
 
