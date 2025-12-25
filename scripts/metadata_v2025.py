@@ -234,6 +234,10 @@ class FileMetadataForm:
 
         match field_type:
             case FieldType.INPUT | FieldType.INPUT_DIRECT:
+                # Handle datepicker: click to open calendar, Escape to close, then fill
+                if await locator.evaluate("el => el.classList.contains('datepicker')"):
+                    await locator.click()
+                    await locator.press("Escape")
                 await locator.clear()
                 await locator.fill(value)
             case FieldType.TEXTAREA:
