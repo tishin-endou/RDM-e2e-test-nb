@@ -126,6 +126,13 @@ async def logout(page, idp_name, transition_timeout=30000):
     else:
         await expect(page.locator('//button[text() = "ログイン"]')).to_be_visible(timeout=transition_timeout)
 
+async def expect_anonymous_toppage(page, idp_name, transition_timeout=30000):
+    """未ログイン状態のGRDMトップページが表示されていることを確認する"""
+    if not idp_name or idp_name == 'FakeCAS':
+        await expect(page.locator('//button[text() = "ログイン"]')).to_be_visible(timeout=transition_timeout)
+    else:
+        await expect(page.locator('#wayf_submit_button')).to_be_visible(timeout=transition_timeout)
+
 async def _login_idp_pw(page, idp_name, idp_username, idp_password, transition_timeout=30000):
     # Shibboleth Login Page
     login_page_locators = _get_login_page_locators(idp_name)
