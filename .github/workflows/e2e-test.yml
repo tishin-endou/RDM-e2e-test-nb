@@ -43,6 +43,22 @@ on:
         description: 'Custom WaterButler image (default: niicloudoperation/rdm-waterbutler:latest)'
         required: false
         default: ''
+      tljh_version:
+        description: 'TLJH version (default: 1.0.0)'
+        required: false
+        default: ''
+      tljh_plugin:
+        description: 'tljh-repo2docker plugin (default: RCOSDP/CS-tljh-repo2docker@master)'
+        required: false
+        default: ''
+      tljh_repo2docker_image:
+        description: 'repo2docker Docker image (default: gcr.io/nii-ap-ops/repo2docker:2025.10.0)'
+        required: false
+        default: ''
+      tljh_rdmfs_image:
+        description: 'RDMFS Docker image (default: gcr.io/nii-ap-ops/rdmfs:2025.10.0)'
+        required: false
+        default: ''
       test_config:
         description: 'Test configuration file to use'
         required: false
@@ -70,6 +86,9 @@ jobs:
             skip_admin: true
             skip_metadata: false
             minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
           - name: admin
             display_name: "Admin Tests"
             include_admin: true
@@ -78,6 +97,9 @@ jobs:
             skip_default_storage: true
             skip_login: true
             minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
             exclude_notebooks: |
               テスト手順-管理者機能-ログイン可否設定.ipynb
               テスト手順-管理者機能-ノード管理.ipynb
@@ -116,6 +138,9 @@ jobs:
               テスト手順-管理者機能-証跡管理.ipynb
               テスト手順-管理者機能-NIIストレージのクォータ.ipynb
             minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
           - name: user-minio
             display_name: "User Tests (MinIO)"
             include_admin: false
@@ -125,9 +150,52 @@ jobs:
             skip_login: true
             skip_130mb_upload: true
             minio_enabled: true
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-weko
+            display_name: "User Tests (WEKO)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: true
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-jupyterhub
+            display_name: "User Tests (JupyterHub)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: true
+            flowable_enabled: false
+          - name: user-workflow
+            display_name: "User Tests (Flowable)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_batch_project_count: 50
     name: E2E ${{ matrix.test-group.display_name }}
     env:
       MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
+      WEKO_ENABLED: ${{ matrix.test-group.weko_enabled == true && 'true' || 'false' }}
+      JUPYTERHUB_ENABLED: ${{ matrix.test-group.jupyterhub_enabled == true && 'true' || 'false' }}
+      FLOWABLE_ENABLED: ${{ matrix.test-group.flowable_enabled == true && 'true' || 'false' }}
       MINIO_ROOT_USER: e2eadmin
       MINIO_ROOT_PASSWORD: e2epassword123
       MINIO_ALIAS: ci-minio
@@ -236,6 +304,33 @@ jobs:
         path: RDM-osf.io
         fetch-depth: 0
 
+    - name: Checkout WEKO repository
+      if: env.WEKO_ENABLED == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: RCOSDP/weko
+        ref: develop_v2.0.0
+        path: weko
+
+    - name: Checkout Flowable gateway repository
+      if: env.FLOWABLE_ENABLED == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: RCOSDP/RDM-flowable-gateway
+        path: RDM-flowable-gateway
+
+    - name: Prepare WEKO compose
+      if: env.WEKO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_weko.sh prepare ../weko
+
+    - name: Prepare Flowable gateway
+      if: env.FLOWABLE_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_flowable.sh prepare ../RDM-flowable-gateway ../RDM-osf.io
+
     - name: Merge custom RDM changes into develop
       if: steps.rdm_config.outputs.merge_required == 'true'
       working-directory: RDM-osf.io
@@ -329,7 +424,7 @@ jobs:
 
     - name: Install Docker Compose
       run: |
-        sudo curl -L "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo curl -L "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
         docker-compose --version
 
@@ -402,20 +497,23 @@ jobs:
     - name: Install Playwright
       run: |
         # Install Playwright browsers with OS dependencies
-        playwright install --with-deps chromium
+        playwright install --with-deps chromium firefox
 
     - name: Create test data for migration source
       if: matrix.test-group.migration_from != null
       working-directory: RDM-osf.io
       run: |
         echo "Creating test data in migration source environment..."
-        
+
+        # Setup institutions first (required for setup_test_data.py)
+        docker-compose run --rm web python3 -m scripts.populate_institutions -e test -a
+
         # Copy the setup script to the container
         docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/setup_test_data.py "$(docker-compose ps -q web)":/tmp/setup_test_data.py
-        
+
         # Create test data that will be migrated
         docker-compose exec -T web bash -c "python3 manage.py shell < /tmp/setup_test_data.py"
-        
+
         echo "Migration source test data created"
 
     - name: Run migration-specific initial data script
@@ -444,8 +542,8 @@ jobs:
         # Execute the notebook against the migration source environment
         papermill ${{ matrix.test-group.migration_from.initial_data_notebook }} \
           ../result/migration_initial_${{ matrix.test-group.migration_from.initial_data_notebook }} \
-          -p rdm_url "http://localhost:5000/" \
-          -p admin_rdm_url "http://localhost:8001/" \
+          -p rdm_url "http://192.168.168.167:5000/" \
+          -p admin_rdm_url "http://192.168.168.167:8001/" \
           -p idp_name_1 "FakeCAS" \
           -p idp_username_1 "testuser1@example.com" \
           -p idp_password_1 "testpass123" \
@@ -501,9 +599,19 @@ jobs:
           MFR_OVERRIDE=$(grep -oP '^-\s*MFR_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           WB_OVERRIDE=$(grep -oP '^-\s*WB_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' ' || true)
           EXCLUDE_NOTEBOOKS_OVERRIDE=$(grep -oP '^-\s*EXCLUDE_NOTEBOOKS:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d '\r' || true)
-          
+
+          # Extract TLJH parameters from PR body
+          TLJH_VERSION_OVERRIDE=$(grep -oP '^-\s*TLJH_VERSION:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          TLJH_PLUGIN_OVERRIDE=$(grep -oP '^-\s*TLJH_PLUGIN:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          TLJH_REPO2DOCKER_IMAGE_OVERRIDE=$(grep -oP '^-\s*TLJH_REPO2DOCKER_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+          TLJH_RDMFS_IMAGE_OVERRIDE=$(grep -oP '^-\s*TLJH_RDMFS_IMAGE:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)
+
           # Export for use in later steps
           echo "EXCLUDE_NOTEBOOKS=$EXCLUDE_NOTEBOOKS_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_VERSION_OVERRIDE=$TLJH_VERSION_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_PLUGIN_OVERRIDE=$TLJH_PLUGIN_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_REPO2DOCKER_IMAGE_OVERRIDE=$TLJH_REPO2DOCKER_IMAGE_OVERRIDE" >> $GITHUB_ENV
+          echo "TLJH_RDMFS_IMAGE_OVERRIDE=$TLJH_RDMFS_IMAGE_OVERRIDE" >> $GITHUB_ENV
           
           # Use overrides if found, otherwise defaults
           export OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
@@ -560,12 +668,11 @@ jobs:
         source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
         export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
         start_rdm_services
-        
-        # Check final build status (for debugging if builds fail)
-        docker-compose logs --tail 50 assets
-        if [ "${{ matrix.test-group.include_admin }}" = "true" ]; then
-          docker-compose logs --tail 50 admin_assets
-        fi
+
+    - name: Register OAuth scopes
+      working-directory: RDM-osf.io
+      run: |
+        docker-compose run --rm web python3 -m scripts.register_oauth_scopes
 
     - name: Seed KAKEN Elasticsearch data
       working-directory: RDM-osf.io
@@ -642,6 +749,68 @@ jobs:
         export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
         test_rdm_endpoints
 
+    - name: Install WEKO stack
+      if: env.WEKO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_weko.sh install ../weko
+
+    - name: Configure WEKO connection info
+      if: env.WEKO_ENABLED == 'true'
+      run: |
+        echo "WEKO_URL=https://192.168.168.167" >> $GITHUB_ENV
+        echo "WEKO_ADMIN_EMAIL=wekosoftware@nii.ac.jp" >> $GITHUB_ENV  # gitleaks:allow
+        echo "WEKO_ADMIN_PASSWORD=uspass123" >> $GITHUB_ENV
+        echo "WEKO_USER_EMAIL=contributor@example.org" >> $GITHUB_ENV  # gitleaks:allow
+        echo "WEKO_USER_PASSWORD=uspass123" >> $GITHUB_ENV
+        echo "WEKO_INSTITUTION_NAME=Virginia Tech [Test]" >> $GITHUB_ENV
+        echo "WEKO_INDEX_NAME=Sample Index" >> $GITHUB_ENV
+        echo "WEKO_DOCKER_COMPOSE_PATH=${{ github.workspace }}/weko/docker-compose2.yml" >> $GITHUB_ENV
+        echo "IGNORE_HTTPS_ERRORS=true" >> $GITHUB_ENV
+
+    - name: Verify RDM containers can connect to WEKO via HTTPS
+      if: env.WEKO_ENABLED == 'true'
+      working-directory: RDM-osf.io
+      run: |
+        set -xeu
+        echo "=== RDM to WEKO HTTPS Connection Verification ==="
+        # web container uses requests (certifi)
+        echo "Testing web (requests)..."
+        docker-compose exec -T web python3 -c "import requests; print('CA bundle:', requests.certs.where()); r = requests.get('https://192.168.168.167', timeout=30); print('Status:', r.status_code)"
+        # wb container uses aiohttp (OpenSSL system certs)
+        echo "Testing wb (aiohttp)..."
+        cat "${{ github.workspace }}/e2e-tests/.github/scripts/verify_weko_https.py" | docker-compose exec -T wb python3
+
+    - name: Install Flowable stack
+      if: env.FLOWABLE_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_flowable.sh install ../RDM-flowable-gateway
+
+    - name: Configure Flowable connection info
+      if: env.FLOWABLE_ENABLED == 'true'
+      run: |
+        echo "GATEWAY_BASE_URL=http://192.168.168.167:8088/" >> $GITHUB_ENV
+        echo "WORKFLOW_BATCH_PROJECT_COUNT=${{ matrix.test-group.workflow_batch_project_count || 50 }}" >> $GITHUB_ENV
+
+    - name: Install TLJH stack
+      if: env.JUPYTERHUB_ENABLED == 'true'
+      working-directory: e2e-tests
+      env:
+        TLJH_VERSION: ${{ env.TLJH_VERSION_OVERRIDE || github.event.inputs.tljh_version || '1.0.0' }}
+        TLJH_PLUGIN: ${{ env.TLJH_PLUGIN_OVERRIDE || github.event.inputs.tljh_plugin || 'RCOSDP/CS-tljh-repo2docker@master' }}
+        REPO2DOCKER_IMAGE: ${{ env.TLJH_REPO2DOCKER_IMAGE_OVERRIDE || github.event.inputs.tljh_repo2docker_image || 'gcr.io/nii-ap-ops/repo2docker:2025.10.0' }}
+        RDMFS_IMAGE: ${{ env.TLJH_RDMFS_IMAGE_OVERRIDE || github.event.inputs.tljh_rdmfs_image || 'gcr.io/nii-ap-ops/rdmfs:2025.10.0' }}
+      run: |
+        .github/scripts/setup_tljh.sh install
+
+    - name: Configure TLJH connection info
+      if: env.JUPYTERHUB_ENABLED == 'true'
+      run: |
+        echo "TLJH_URL=http://localhost" >> $GITHUB_ENV
+        echo "TLJH_USERNAME=admin" >> $GITHUB_ENV
+        echo "TLJH_PASSWORD=change-your-password" >> $GITHUB_ENV
+
     - name: Run post-migration tests
       if: matrix.test-group.migration_from.post_migration_notebook != null
       working-directory: e2e-tests/migrations
@@ -654,8 +823,8 @@ jobs:
         # Execute the post-migration test notebook
         papermill ${{ matrix.test-group.migration_from.post_migration_notebook }} \
           ../result/${{ matrix.test-group.migration_from.post_migration_notebook }} \
-          -p rdm_url "http://localhost:5000/" \
-          -p admin_rdm_url "http://localhost:8001/" \
+          -p rdm_url "http://192.168.168.167:5000/" \
+          -p admin_rdm_url "http://192.168.168.167:8001/" \
           -p idp_name_1 "FakeCAS" \
           -p idp_username_1 "testuser1@example.com" \
           -p idp_password_1 "testpass123" \
@@ -670,6 +839,9 @@ jobs:
     - name: Create test users and projects
       working-directory: RDM-osf.io
       run: |
+        # Setup institutions first
+        docker-compose run --rm web python3 -m scripts.populate_institutions -e test -a
+
         # Copy the setup script to the container
         docker cp ${{ github.workspace }}/e2e-tests/.github/scripts/setup_test_data.py "$(docker-compose ps -q web)":/tmp/setup_test_data.py
         
@@ -716,22 +888,37 @@ jobs:
       run: |
         cat > base_ci.config.yaml <<'EOF'
         # CI Test Configuration - ${{ matrix.test-group.display_name }}
-        rdm_url: 'http://localhost:5000/'
-        admin_rdm_url: 'http://localhost:8001/'
+        rdm_url: 'http://192.168.168.167:5000/'
+        admin_rdm_url: 'http://192.168.168.167:8001/'
         
         # Test users (created above)
         idp_name_1: 'FakeCAS'
         idp_username_1: 'testuser1@example.com'
         idp_password_1: 'testpass123'
-        
+
         idp_name_2: 'FakeCAS'
         idp_username_2: 'testuser2@example.com'
         idp_password_2: 'testpass456'
+
+        # Admin users for admin page tests
+        idp_name_integrated_admin: 'FakeCAS'
+        idp_username_integrated_admin: 'testuser1@example.com'
+        idp_password_integrated_admin: 'testpass123'
+        idp_name_institutional_admin: 'FakeCAS'
+        idp_username_institutional_admin: 'teststaff@example.com'
+        idp_password_institutional_admin: 'testpass789'
+        idp_name_non_admin: 'FakeCAS'
+        idp_username_non_admin: 'testuser2@example.com'
+        idp_password_non_admin: 'testpass456'
+        idp_name_other_institution: 'FakeCAS'
+        idp_username_other_institution: 'testuser3@example.com'
+        idp_password_other_institution: 'testpass321'
+        institution_name: 'Virginia Tech [Test]'
         
         # Test project URLs (using created project IDs and names)
-        rdm_project_url_1: 'http://localhost:5000/${{ env.PROJECT_ID_1 }}/'
+        rdm_project_url_1: 'http://192.168.168.167:5000/${{ env.PROJECT_ID_1 }}/'
         rdm_project_name_1: '${{ env.PROJECT_NAME_1 }}'
-        rdm_project_url_2: 'http://localhost:5000/${{ env.PROJECT_ID_2 }}/'
+        rdm_project_url_2: 'http://192.168.168.167:5000/${{ env.PROJECT_ID_2 }}/'
         
         # Test settings for ${{ matrix.test-group.name }} group
         skip_failed_test: true  # Continue on failure
@@ -742,6 +929,7 @@ jobs:
         skip_metadata: ${{ matrix.test-group.skip_metadata }}
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
+        weko_enabled: ${{ matrix.test-group.weko_enabled == true }}
         enable_1gb_file_upload: false
         skip_erad_completion_test: false
         storages_oauth: []
@@ -750,6 +938,15 @@ jobs:
         args=(ci.config.yaml base_ci.config.yaml)
         if [ "${MINIO_ENABLED}" = "true" ]; then
           args+=(--minio)
+        fi
+        if [ "${JUPYTERHUB_ENABLED}" = "true" ]; then
+          args+=(--jupyterhub)
+        fi
+        if [ "${WEKO_ENABLED}" = "true" ]; then
+          args+=(--weko)
+        fi
+        if [ "${FLOWABLE_ENABLED}" = "true" ]; then
+          args+=(--flowable)
         fi
 
         .github/scripts/generate_ci_config.sh "${args[@]}"
@@ -875,6 +1072,65 @@ jobs:
         name: minio-trace-${{ matrix.test-group.name }}
         path: e2e-tests/minio-trace.log
         if-no-files-found: ignore
+
+    - name: Collect WEKO logs
+      if: always() && env.WEKO_ENABLED == 'true'
+      working-directory: weko
+      run: |
+        docker compose -f docker-compose2.yml logs > ../e2e-tests/weko-docker-logs.txt 2>&1 || true
+
+    - name: Upload WEKO logs
+      if: always() && env.WEKO_ENABLED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: weko-logs-${{ matrix.test-group.name }}
+        path: e2e-tests/weko-docker-logs.txt
+        retention-days: 7
+
+    - name: Collect TLJH logs
+      if: always() && env.JUPYTERHUB_ENABLED == 'true'
+      run: |
+        sudo journalctl -u jupyterhub > e2e-tests/jupyterhub-logs.txt 2>&1 || true
+
+    - name: Upload TLJH logs
+      if: always() && env.JUPYTERHUB_ENABLED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: tljh-logs-${{ matrix.test-group.name }}
+        path: e2e-tests/jupyterhub-logs.txt
+        retention-days: 7
+
+    - name: Collect Flowable logs
+      if: always() && env.FLOWABLE_ENABLED == 'true'
+      working-directory: RDM-flowable-gateway
+      run: |
+        docker compose logs > ../e2e-tests/flowable-docker-logs.txt 2>&1 || true
+
+    - name: Upload Flowable logs
+      if: always() && env.FLOWABLE_ENABLED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: flowable-logs-${{ matrix.test-group.name }}
+        path: e2e-tests/flowable-docker-logs.txt
+        retention-days: 7
+
+    - name: Stop WEKO stack
+      if: always() && env.WEKO_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_weko.sh down ../weko
+
+    - name: Stop TLJH stack
+      if: always() && env.JUPYTERHUB_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_tljh.sh down
+
+    - name: Stop Flowable stack
+      if: always() && env.FLOWABLE_ENABLED == 'true'
+      working-directory: e2e-tests
+      run: |
+        .github/scripts/setup_flowable.sh down ../RDM-flowable-gateway
 
     - name: Cleanup and save logs
       if: always()

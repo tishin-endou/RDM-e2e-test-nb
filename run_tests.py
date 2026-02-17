@@ -47,6 +47,42 @@ class TestRunner:
         self.skip_login = False
         self.enable_1gb_file_upload = False
         self.skip_erad_completion_test = False
+        self.jupyterhub_enabled = False
+        self.tljh_url = None
+        self.tljh_username = None
+        self.tljh_password = None
+        self.weko_enabled = False
+        # WEKO / JAIRO Cloud specific parameters
+        self.weko_url = None
+        self.weko_admin_email = None
+        self.weko_admin_password = None
+        self.weko_user_email = None
+        self.weko_user_password = None
+        self.weko_institution_name = None
+        self.weko_index_name = None
+        self.weko_docker_compose_path = None
+        self.sword_mapping_id = 30002
+        self.ignore_https_errors = False
+        # Workflow specific parameters
+        self.workflow_enabled = False
+        self.gateway_base_url = None
+        # Workflow admin user parameters
+        self.idp_name_integrated_admin = None
+        self.idp_username_integrated_admin = None
+        self.idp_password_integrated_admin = None
+        self.idp_name_institutional_admin = None
+        self.idp_username_institutional_admin = None
+        self.idp_password_institutional_admin = None
+        # Non-admin user parameters (for workflow executor, etc.)
+        self.idp_name_non_admin = None
+        self.idp_username_non_admin = None
+        self.idp_password_non_admin = None
+        # Other institution user parameters
+        self.idp_name_other_institution = None
+        self.idp_username_other_institution = None
+        self.idp_password_other_institution = None
+        self.workflow_batch_project_count = 50
+        self.institution_name = None
         
         # Exclude notebooks
         self.exclude_notebooks = []
@@ -296,6 +332,130 @@ class TestRunner:
                 )
             )
             
+    def run_jupyterhub_tests(self):
+        """Run BinderHub/TLJH related tests."""
+        print('\n=== JupyterHub Tests ===')
+        if not self.jupyterhub_enabled:
+            print('Skipping JupyterHub tests (jupyterhub_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in ['tljh_url', 'tljh_username', 'tljh_password']
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print(
+                'Error: Missing TLJH parameters: ' + ', '.join(missing_params)
+            )
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-BinderHubアドオン.ipynb',
+                tljh_url=self.tljh_url,
+                tljh_username=self.tljh_username,
+                tljh_password=self.tljh_password,
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
+    def run_weko_tests(self):
+        """Run WEKO addon tests."""
+        print('\n=== WEKO Tests ===')
+        if not self.weko_enabled:
+            print('Skipping WEKO tests (weko_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in [
+                'weko_url', 'weko_admin_email', 'weko_admin_password',
+                'weko_user_email', 'weko_user_password',
+                'weko_institution_name', 'weko_index_name',
+                'weko_docker_compose_path'
+            ]
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print('Error: Missing WEKO parameters: ' + ', '.join(missing_params))
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-WEKOアドオン.ipynb',
+                admin_rdm_url=self.admin_rdm_url,
+                weko_url=self.weko_url,
+                weko_admin_email=self.weko_admin_email,
+                weko_admin_password=self.weko_admin_password,
+                weko_user_email=self.weko_user_email,
+                weko_user_password=self.weko_user_password,
+                weko_institution_name=self.weko_institution_name,
+                weko_index_name=self.weko_index_name,
+                weko_docker_compose_path=self.weko_docker_compose_path,
+                sword_mapping_id=self.sword_mapping_id,
+                ignore_https_errors=self.ignore_https_errors,
+                idp_name_2=getattr(self, 'idp_name_2', None),
+                idp_username_2=getattr(self, 'idp_username_2', None),
+                idp_password_2=getattr(self, 'idp_password_2', None),
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
+    def run_workflow_tests(self):
+        """Run Workflow addon tests."""
+        print('\n=== Workflow Tests ===')
+        if not self.workflow_enabled:
+            print('Skipping Workflow tests (workflow_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in [
+                'gateway_base_url',
+                'idp_name_integrated_admin',
+                'idp_username_integrated_admin',
+                'idp_password_integrated_admin',
+                'idp_name_institutional_admin',
+                'idp_username_institutional_admin',
+                'idp_password_institutional_admin',
+                'idp_name_non_admin',
+                'idp_username_non_admin',
+                'idp_password_non_admin',
+                'idp_name_other_institution',
+                'idp_username_other_institution',
+                'idp_password_other_institution',
+                'institution_name',
+            ]
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print('Error: Missing Workflow parameters: ' + ', '.join(missing_params))
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-Workflowアドオン.ipynb',
+                admin_rdm_url=self.admin_rdm_url,
+                gateway_base_url=self.gateway_base_url,
+                idp_name_integrated_admin=self.idp_name_integrated_admin,
+                idp_username_integrated_admin=self.idp_username_integrated_admin,
+                idp_password_integrated_admin=self.idp_password_integrated_admin,
+                idp_name_institutional_admin=self.idp_name_institutional_admin,
+                idp_username_institutional_admin=self.idp_username_institutional_admin,
+                idp_password_institutional_admin=self.idp_password_institutional_admin,
+                idp_name_executor=self.idp_name_non_admin,
+                idp_username_executor=self.idp_username_non_admin,
+                idp_password_executor=self.idp_password_non_admin,
+                idp_name_other_institution=self.idp_name_other_institution,
+                idp_username_other_institution=self.idp_username_other_institution,
+                idp_password_other_institution=self.idp_password_other_institution,
+                batch_project_count=self.workflow_batch_project_count,
+                institution_name=self.institution_name,
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
     def check_notebook_errors(self, notebook_path):
         """Check a notebook and all its sub-notebooks recursively for execution errors."""
         all_errors = []
@@ -393,6 +553,9 @@ class TestRunner:
         self.run_storage_tests()
         self.run_metadata_tests()
         self.run_admin_tests()
+        self.run_jupyterhub_tests()
+        self.run_weko_tests()
+        self.run_workflow_tests()
         
         result_notebooks = [result_notebook for result_notebook in self.result_notebooks if result_notebook is not None]
         

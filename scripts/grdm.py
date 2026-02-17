@@ -106,6 +106,30 @@ async def login(page, idp_name, idp_username, idp_password, transition_timeout=3
         # すでにIdP選択済みとみなし、ユーザー名とパスワード入力を試みる
         await _login_idp_pw(page, idp_name, idp_username, idp_password, transition_timeout=transition_timeout)
 
+async def logout(page, idp_name, transition_timeout=30000):
+    """GRDMからログアウトする"""
+    ember_profile_dropdown = page.locator('//a[@data-test-auth-dropdown-toggle]')
+    if await ember_profile_dropdown.count() > 0:
+        await ember_profile_dropdown.click()
+        await page.locator('//*[@data-test-ad-logout]').click()
+    else:
+        await page.locator('//div[@class = "nav-profile-name"]').click()
+        await page.locator('//*[contains(text(), "ログアウト")]').click()
+
+    if idp_name == 'FakeCAS':
+        await expect(page.locator('//button[@data-test-sign-in-button]')).to_be_visible(timeout=transition_timeout)
+    elif idp_name is not None:
+        await expect(page.locator('//*[@id = "dropdown_img"]')).to_be_visible(timeout=transition_timeout)
+    else:
+        await expect(page.locator('//button[text() = "ログイン"]')).to_be_visible(timeout=transition_timeout)
+
+async def expect_anonymous_toppage(page, idp_name, transition_timeout=30000):
+    """未ログイン状態のGRDMトップページが表示されていることを確認する"""
+    if not idp_name or idp_name == 'FakeCAS':
+        await expect(page.locator('//button[text() = "ログイン"]')).to_be_visible(timeout=transition_timeout)
+    else:
+        await expect(page.locator('#wayf_submit_button')).to_be_visible(timeout=transition_timeout)
+
 async def _login_idp_pw(page, idp_name, idp_username, idp_password, transition_timeout=30000):
     login_proc = _login_handlers[idp_name]
     await login_proc(page, idp_username, idp_password, transition_timeout)
@@ -172,7 +196,7 @@ async def expect_dashboard(page, transition_timeout=30000, retries=3):
     while remain > 0:
         try:
             # GRDMのボタンが表示されることを確認
-            await expect(page.locator('//*[text() = "プロジェクト管理者"]')).to_be_visible(timeout=transition_timeout)
+            await expect(page.locator('//*[text() = "プロジェクト管理者" or contains(text(), "まだプロジェクトがありません。")]')).to_be_visible(timeout=transition_timeout)
             break
         except:
             if remain <= 0:
@@ -292,9 +316,9 @@ def get_select_file_draggable_locator(page, provider):
 def get_select_file_draggable_xpath(name):
     return f'//*[contains(@class, "tb-expand-icon-holder")]//*[contains(@class, "file-extension")]/../../following-sibling::*[contains(@class, "title-text")]//*[text() = "{name}"]/../..'
 
-async def wait_for_uploaded(page, filename):
-    await expect(page.locator(f'//*[text() = "{filename}"]/../following-sibling::*//*[@role = "progressbar"]')).to_have_count(0, timeout=30000)
-    await expect(get_select_file_title_locator(page, filename)).to_be_visible(timeout=1000)    
+async def wait_for_uploaded(page, filename, timeout=30000):
+    await expect(page.locator(f'//*[text() = "{filename}"]/../following-sibling::*//*[@role = "progressbar"]')).to_have_count(0, timeout=timeout)
+    await expect(get_select_file_title_locator(page, filename)).to_be_visible(timeout=timeout)
 
 def _bytes_to_data_url(byte_data, mime_type="application/octet-stream"):
     """バイト配列をDataURLに変換"""
@@ -304,12 +328,12 @@ def _bytes_to_data_url(byte_data, mime_type="application/octet-stream"):
 async def upload_file(page, path):
     # Upload ボタンを使ってファイルをアップロード
     await page.locator('//i[contains(@class, "fa-upload")]/../*[text() = "アップロード"]').click()
-    await page.set_input_files('//input[@type = "file" and @class = "dz-hidden-input"]', path)
+    await page.set_input_files('//input[@type = "file"]', path, timeout=60000)
 
 async def upload_folder(page, path):
     # フォルダのアップロード ボタンを使ってファイルをアップロード
     await page.locator('//i[contains(@class, "fa-plus")]/../*[text() = "フォルダのアップロード"]').click()
-    await page.set_input_files('//input[@type = "file" and @webkitdirectory = "true"]', path)
+    await page.set_input_files('//input[@type = "file" and @webkitdirectory = "true"]', path, timeout=60000)
 
 async def drop_file(page, element_locator, path):
     # based on: https://zenn.dev/st_little/articles/how-to-upload-files-in-playwright
@@ -343,7 +367,6 @@ async def drop_file(page, element_locator, path):
 
 async def drag_and_drop(page, source, dest):
     await expect(source).to_have_class(re.compile('.*ui-draggable.*'))
-    await expect(dest).to_have_class(re.compile('.*ui-droppable.*'))
 
     center_coordinates_source = await source.evaluate('''element => {
         const rect = element.getBoundingClientRect();

@@ -1,4 +1,5 @@
 # ユーティリティ関数群
+import asyncio
 from datetime import datetime
 import os
 import shutil
@@ -13,19 +14,29 @@ from playwright.async_api import async_playwright, expect
 playwright = None
 current_session_id = None
 current_browser = None
+current_browser_type = None
 current_contexts = None
 default_last_path = None
 context_close_on_fail = True
+current_ignore_https_errors = False
 temp_dir = None
+console_messages = []
 
 async def run_pw(f, last_path=default_last_path, screenshot=True, permissions=None, new_context=False, new_page=False):
     global current_browser
+    global current_browser_type
     if current_browser is None:
-        current_browser = await playwright.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--lang=ja"],
-        )
-        # , "--timeout=25000"
+        browser_type = current_browser_type or 'chromium'
+        if browser_type == 'firefox':
+            current_browser = await playwright.firefox.launch(
+                headless=True,
+                args=[],
+            )
+        else:
+            current_browser = await playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--lang=ja"],
+            )
     
     global current_contexts
     if current_contexts is None or len(current_contexts) == 0 or new_context:
@@ -34,9 +45,10 @@ async def run_pw(f, last_path=default_last_path, screenshot=True, permissions=No
         har_path = os.path.join(temp_dir, 'har.zip')
 
         context = await current_browser.new_context(
-            locale="ja-JP",  # Playwrightでは直接ロケールを設定可能
+            locale="ja-JP",
             record_video_dir=videos_dir,
             record_har_path=har_path,
+            ignore_https_errors=current_ignore_https_errors,
         )
         if current_contexts is None:
             current_contexts = [(context, [])]
@@ -45,7 +57,14 @@ async def run_pw(f, last_path=default_last_path, screenshot=True, permissions=No
 
     current_context, current_pages = current_contexts[-1]
     if len(current_pages) == 0 or new_page:
-        current_pages.append(await current_context.new_page())
+        page = await current_context.new_page()
+        page.on("console", lambda msg: console_messages.append({
+            "timestamp": time.time(),
+            "url": page.url,
+            "type": msg.type,
+            "text": msg.text
+        }))
+        current_pages.append(page)
 
     current_time = time.time()
     print(f'Start epoch: {current_time} seconds')
@@ -94,8 +113,8 @@ async def close_latest_page(last_path=None):
     current_contexts = current_contexts[:-1]
     await current_context.close()
 
-async def init_pw_context(close_on_fail=True, last_path=None):
-    global playwright, current_session_id, default_last_path, current_browser, temp_dir, context_close_on_fail, current_contexts
+async def init_pw_context(close_on_fail=True, last_path=None, browser_type='chromium', ignore_https_errors=False):
+    global playwright, current_session_id, default_last_path, current_browser, current_browser_type, temp_dir, context_close_on_fail, current_ignore_https_errors, current_contexts, console_messages
     if current_browser is not None:
         await current_browser.close()
         current_browser = None
@@ -107,17 +126,29 @@ async def init_pw_context(close_on_fail=True, last_path=None):
     default_last_path = last_path or os.path.join(os.path.expanduser('~/last-screenshots'), current_session_id)
     temp_dir = tempfile.mkdtemp()
     context_close_on_fail = close_on_fail
+    current_browser_type = browser_type
+    current_ignore_https_errors = ignore_https_errors
     if current_contexts is not None:
         for current_context in current_contexts:
             await current_context.close()
     current_contexts = None
+    console_messages = []
     return (current_session_id, temp_dir)
 
-async def finish_pw_context(screenshot=False, last_path=None):
+async def finish_pw_context(screenshot=False, last_path=None, timeout=30):
     global current_browser
-    await _finish_pw_context(screenshot=screenshot, last_path=last_path)
+    try:
+        await asyncio.wait_for(
+            _finish_pw_context(screenshot=screenshot, last_path=last_path),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        print(f'finish_pw_context timed out after {timeout} seconds', file=sys.stderr)
     if current_browser is not None:
-        await current_browser.close()
+        try:
+            await asyncio.wait_for(current_browser.close(), timeout=10)
+        except asyncio.TimeoutError:
+            print('browser.close() timed out', file=sys.stderr)
         current_browser = None
 
 async def save_screenshot(path):
@@ -180,9 +211,43 @@ async def _finish_pw_context(screenshot=False, last_path=None):
         print(f'HAR: {dest_har_path}')
     else:
         print('.harファイルの取得に失敗しました。', file=sys.stderr)
+    console_log_path = os.path.join(last_path or default_last_path, 'console.log')
+    with open(console_log_path, 'w') as f:
+        for msg in console_messages:
+            f.write(f"{msg['timestamp']:.3f} {msg['url']} [{msg['type']}] {msg['text']}\n")
+    print(f'Console: {console_log_path}')
     shutil.rmtree(temp_dir)
     for page in current_pages:
         await page.close()
     if len(current_contexts) == 0:
         return
     await _finish_pw_context(screenshot=False, last_path=last_path)
+
+async def mock_clipboard(page):
+    """Mock navigator.clipboard for non-secure contexts."""
+    await page.evaluate("""
+        () => {
+            const clipboard = {
+                _mocked: true,
+                _text: null,
+                async writeText(text) {
+                    this._text = text;
+                },
+                async readText() {
+                    return this._text;
+                }
+            };
+            Object.defineProperty(navigator, 'clipboard', {
+                value: clipboard,
+                writable: true,
+                configurable: true
+            });
+        }
+    """)
+
+async def get_mocked_clipboard_text(page):
+    """Get text from the mocked clipboard."""
+    is_mocked = await page.evaluate("() => navigator.clipboard?._mocked")
+    if not is_mocked:
+        raise RuntimeError("Clipboard is not mocked. Call mock_clipboard(page) first.")
+    return await page.evaluate("() => navigator.clipboard._text")
