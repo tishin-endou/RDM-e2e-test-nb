@@ -48,8 +48,11 @@ async def login_as_admin(page, idp_name, idp_username, idp_password, transition_
         idplist = page.locator('//form[@id = "IdPList"]//input[@type = "text"]')
         await idplist.fill(idp_name);
         await idplist.press('Enter');
-        await page.locator(f'//div[@class = "select" and text() = "{idp_name}"]').click()
-    
+        # ドロップダウンリストから一致するIdPをクリック
+        idp_option = page.locator(f'//div[@class = "wayf_list_idp" and text() = "{idp_name}"]').first
+        await expect(idp_option).to_be_visible(timeout=transition_timeout)
+        await idp_option.click()
+
         # 選択ボタンが有効になったことを確認
         locator_wayf_submit = page.locator('//input[@id = "wayf_submit_button"]')
         await expect(locator_wayf_submit).to_be_enabled(timeout=transition_timeout)
