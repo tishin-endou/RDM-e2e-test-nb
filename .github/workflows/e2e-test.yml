@@ -43,6 +43,14 @@ on:
         description: 'Custom WaterButler image (default: niicloudoperation/rdm-waterbutler:latest)'
         required: false
         default: ''
+      wb_repository:
+        description: 'RDM-waterbutler repository (default: RCOSDP/RDM-waterbutler)'
+        required: false
+        default: ''
+      wb_branch:
+        description: 'RDM-waterbutler branch to build and test against'
+        required: false
+        default: ''
       tljh_version:
         description: 'TLJH version (default: 1.0.0)'
         required: false
@@ -583,6 +591,46 @@ jobs:
         export INCLUDE_ADMIN=${{ matrix.test-group.include_admin }}
         setup_config_files
 
+    - name: Parse PR body and workflow parameters
+      run: |
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          cat > /tmp/pr_body.txt << 'EOF'
+        ${{ github.event.pull_request.body }}
+        EOF
+          echo "WB_CUSTOM_REPO=$(grep -oP '^-\s*WB_REPOSITORY:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)" >> $GITHUB_ENV
+          echo "WB_CUSTOM_BRANCH=$(grep -oP '^-\s*WB_BRANCH:\s*\K.*$' /tmp/pr_body.txt | head -1 | tr -d ' \r' || true)" >> $GITHUB_ENV
+        else
+          echo "WB_CUSTOM_REPO=${{ github.event.inputs.wb_repository }}" >> $GITHUB_ENV
+          echo "WB_CUSTOM_BRANCH=${{ github.event.inputs.wb_branch }}" >> $GITHUB_ENV
+        fi
+
+    - name: Build custom WaterButler image
+      if: env.WB_CUSTOM_BRANCH != ''
+      run: |
+        WB_REPO="${WB_CUSTOM_REPO:-RCOSDP/RDM-waterbutler}"
+        WB_BRANCH="${WB_CUSTOM_BRANCH}"
+        WB_BASE_BRANCH="develop"
+
+        echo "Building custom WaterButler image from ${WB_REPO}@${WB_BRANCH}"
+
+        # Clone base branch
+        git clone --depth=50 -b "$WB_BASE_BRANCH" "https://github.com/${WB_REPO}.git" RDM-waterbutler
+        cd RDM-waterbutler
+
+        # Merge custom branch
+        git fetch origin "$WB_BRANCH"
+        git config user.name "github-actions[bot]"
+        git config user.email "RDM-e2e-test-nb@example.com"
+        git merge --no-ff FETCH_HEAD -m "Merge ${WB_BRANCH} for E2E tests"
+
+        # Build Docker image
+        docker build -t rdm-waterbutler:custom .
+        cd ..
+
+        # Override WB_IMAGE for subsequent steps
+        echo "WB_IMAGE=rdm-waterbutler:custom" >> $GITHUB_ENV
+        echo "Custom WaterButler image built successfully"
+
     - name: Create docker-compose override for NII Cloud Operation images
       working-directory: RDM-osf.io
       run: |
@@ -612,22 +660,31 @@ jobs:
           echo "TLJH_PLUGIN_OVERRIDE=$TLJH_PLUGIN_OVERRIDE" >> $GITHUB_ENV
           echo "TLJH_REPO2DOCKER_IMAGE_OVERRIDE=$TLJH_REPO2DOCKER_IMAGE_OVERRIDE" >> $GITHUB_ENV
           echo "TLJH_RDMFS_IMAGE_OVERRIDE=$TLJH_RDMFS_IMAGE_OVERRIDE" >> $GITHUB_ENV
-          
+
           # Use overrides if found, otherwise defaults
+          # If WB_IMAGE was set by "Build custom WaterButler image" step, use it
           export OSF_IMAGE="${OSF_OVERRIDE:-niicloudoperation/rdm-osf.io:latest}"
           export EMBER_IMAGE="${EMBER_OVERRIDE:-niicloudoperation/rdm-ember-osf-web:latest}"
           export CAS_IMAGE="${CAS_OVERRIDE:-niicloudoperation/rdm-cas-overlay:latest}"
           export MFR_IMAGE="${MFR_OVERRIDE:-niicloudoperation/rdm-modular-file-renderer:latest}"
-          export WB_IMAGE="${WB_OVERRIDE:-niicloudoperation/rdm-waterbutler:latest}"
+          if [[ -n "$WB_IMAGE" ]]; then
+            export WB_IMAGE
+          else
+            export WB_IMAGE="${WB_OVERRIDE:-niicloudoperation/rdm-waterbutler:latest}"
+          fi
         else
           # Use workflow dispatch inputs or defaults
           export OSF_IMAGE="${{ github.event.inputs.osf_image || 'niicloudoperation/rdm-osf.io:latest' }}"
           export EMBER_IMAGE="${{ github.event.inputs.ember_image || 'niicloudoperation/rdm-ember-osf-web:latest' }}"
           export CAS_IMAGE="${{ github.event.inputs.cas_image || 'niicloudoperation/rdm-cas-overlay:latest' }}"
           export MFR_IMAGE="${{ github.event.inputs.mfr_image || 'niicloudoperation/rdm-modular-file-renderer:latest' }}"
-          export WB_IMAGE="${{ github.event.inputs.wb_image || 'niicloudoperation/rdm-waterbutler:latest' }}"
+          if [[ -n "$WB_IMAGE" ]]; then
+            export WB_IMAGE
+          else
+            export WB_IMAGE="${{ github.event.inputs.wb_image || 'niicloudoperation/rdm-waterbutler:latest' }}"
+          fi
         fi
-        
+
         source ${{ github.workspace }}/e2e-tests/.github/scripts/setup_rdm.sh
         create_docker_override
 
