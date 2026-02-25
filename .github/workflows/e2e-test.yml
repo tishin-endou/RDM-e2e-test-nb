@@ -851,9 +851,9 @@ jobs:
           INST_ACCESS_KEY="ci$(key_part)"
           INST_SECRET_KEY="$(secret_part)"
           INST_BUCKET="${BUCKET_PREFIX}-inst"
+          # Second bucket is required by setup_minio_buckets.sh but not used for inst storage
+          INST_BUCKET_DUMMY="${BUCKET_PREFIX}-inst2"
 
-          # Create institutional storage bucket using setup_minio_buckets.sh
-          # We reuse the script with the same key for both user slots
           .github/scripts/setup_minio_buckets.sh \
             ../RDM-osf.io \
             "${MINIO_ALIAS}" \
@@ -861,7 +861,7 @@ jobs:
             "${MINIO_ROOT_USER}" \
             "${MINIO_ROOT_PASSWORD}" \
             "${INST_ACCESS_KEY}" "${INST_SECRET_KEY}" "${INST_BUCKET}" \
-            "${INST_ACCESS_KEY}" "${INST_SECRET_KEY}" "${INST_BUCKET}"
+            "${INST_ACCESS_KEY}" "${INST_SECRET_KEY}" "${INST_BUCKET_DUMMY}"
 
           echo "S3COMPATSIGV4_INST_ACCESS_KEY=${INST_ACCESS_KEY}" >> $GITHUB_ENV
           echo "S3COMPATSIGV4_INST_SECRET_KEY=${INST_SECRET_KEY}" >> $GITHUB_ENV
