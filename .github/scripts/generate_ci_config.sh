@@ -3,7 +3,7 @@ set -xeuo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat >&2 <<'USAGE'
-Usage: generate_ci_config.sh <output_path> <base_config_yaml> [--minio] [--jupyterhub] [--weko] [--flowable]
+Usage: generate_ci_config.sh <output_path> <base_config_yaml> [--minio] [--jupyterhub] [--weko] [--flowable] [--s3compatsigv4] [--s3compatsigv4-inst]
 USAGE
   exit 1
 fi
@@ -15,6 +15,8 @@ MINIO=false
 JUPYTERHUB=false
 WEKO=false
 FLOWABLE=false
+S3COMPATSIGV4=false
+S3COMPATSIGV4_INST=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -29,6 +31,12 @@ for arg in "$@"; do
       ;;
     --flowable)
       FLOWABLE=true
+      ;;
+    --s3compatsigv4)
+      S3COMPATSIGV4=true
+      ;;
+    --s3compatsigv4-inst)
+      S3COMPATSIGV4_INST=true
       ;;
     *)
       echo "Unknown argument: ${arg}" >&2
@@ -136,6 +144,47 @@ else
   cat >> "${OUTPUT}" <<'EOF'
 
 workflow_enabled: false
+EOF
+fi
+
+if [[ "${S3COMPATSIGV4}" == "true" ]]; then
+  if [[ -z "${S3COMPATSIGV4_ACCESS_KEY_1:-}" || -z "${S3COMPATSIGV4_SECRET_KEY_1:-}" ]]; then
+    echo "S3 compat sigv4 credentials are not set" >&2
+    exit 1
+  fi
+
+  cat >> "${OUTPUT}" <<EOF
+
+s3compatsigv4_enabled: true
+
+s3compatsigv4_access_key_1: '${S3COMPATSIGV4_ACCESS_KEY_1}'
+s3compatsigv4_secret_access_key_1: '${S3COMPATSIGV4_SECRET_KEY_1}'
+s3compatsigv4_endpoint_1: '${S3COMPATSIGV4_ENDPOINT}'
+s3compatsigv4_test_bucket_name_1: '${S3COMPATSIGV4_BUCKET_NAME_1}'
+
+s3compatsigv4_access_key_2: '${S3COMPATSIGV4_ACCESS_KEY_2}'
+s3compatsigv4_secret_access_key_2: '${S3COMPATSIGV4_SECRET_KEY_2}'
+s3compatsigv4_endpoint_2: '${S3COMPATSIGV4_ENDPOINT}'
+s3compatsigv4_test_bucket_name_2: '${S3COMPATSIGV4_BUCKET_NAME_2}'
+
+s3compatsigv4_type_name_1: '${S3COMPATSIGV4_SERVICE_NAME}'
+s3compatsigv4_type_name_2: '${S3COMPATSIGV4_SERVICE_NAME}'
+EOF
+fi
+
+if [[ "${S3COMPATSIGV4_INST}" == "true" ]]; then
+  if [[ -z "${S3COMPATSIGV4_INST_ACCESS_KEY:-}" || -z "${S3COMPATSIGV4_INST_SECRET_KEY:-}" ]]; then
+    echo "S3 compat sigv4 institutional storage credentials are not set" >&2
+    exit 1
+  fi
+
+  cat >> "${OUTPUT}" <<EOF
+
+s3compatsigv4_institutional_storage_enabled: true
+s3compatsigv4_inst_endpoint_url: '${S3COMPATSIGV4_INST_ENDPOINT}'
+s3compatsigv4_inst_access_key: '${S3COMPATSIGV4_INST_ACCESS_KEY}'
+s3compatsigv4_inst_secret_key: '${S3COMPATSIGV4_INST_SECRET_KEY}'
+s3compatsigv4_inst_bucket: '${S3COMPATSIGV4_INST_BUCKET}'
 EOF
 fi
 

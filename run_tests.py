@@ -63,6 +63,9 @@ class TestRunner:
         self.weko_docker_compose_path = None
         self.sword_mapping_id = 30002
         self.ignore_https_errors = False
+        # S3CompatSigV4 specific parameters
+        self.s3compatsigv4_enabled = False
+        self.s3compatsigv4_institutional_storage_enabled = False
         # Workflow specific parameters
         self.workflow_enabled = False
         self.gateway_base_url = None
@@ -281,6 +284,80 @@ class TestRunner:
         # OAuth storage tests (require manual setup, so skip in automated tests)
         print('\nSkipping OAuth storage tests (require manual setup)')
         
+    def run_s3compatsigv4_tests(self):
+        """Run S3 Compatible Storage (SigV4) tests."""
+        print('\n=== S3CompatSigV4 Tests ===')
+        if not self.s3compatsigv4_enabled:
+            print('Skipping S3CompatSigV4 tests (s3compatsigv4_enabled=false)')
+            return
+
+        access_key_1 = getattr(self, 's3compatsigv4_access_key_1', None)
+        if not access_key_1:
+            print('Skipping S3CompatSigV4 tests (credentials not configured)')
+            return
+
+        rdm_project_prefix = 'TEST-S3COMPATSIGV4-{}'.format(
+            datetime.now().strftime('%Y%m%d-%H%M%S')
+        )
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                '取りまとめ-S3CompatSigV4.ipynb',
+                s3_access_key_1=access_key_1,
+                s3_secret_access_key_1=getattr(self, 's3compatsigv4_secret_access_key_1', None),
+                s3_endpoint_1=getattr(self, 's3compatsigv4_endpoint_1', None),
+                s3_test_bucket_name_1=getattr(self, 's3compatsigv4_test_bucket_name_1', None),
+                s3_access_key_2=getattr(self, 's3compatsigv4_access_key_2', None),
+                s3_secret_access_key_2=getattr(self, 's3compatsigv4_secret_access_key_2', None),
+                s3_endpoint_2=getattr(self, 's3compatsigv4_endpoint_2', None),
+                s3_test_bucket_name_2=getattr(self, 's3compatsigv4_test_bucket_name_2', None),
+                s3compat_type_name_1=getattr(self, 's3compatsigv4_type_name_1', None),
+                s3compat_type_name_2=getattr(self, 's3compatsigv4_type_name_2', None),
+                rdm_project_prefix=rdm_project_prefix,
+                target_storage_name='S3 Compatible Storage (SigV4)',
+                target_storage_id='s3compatsigv4',
+                enable_1gb_file_upload=self.enable_1gb_file_upload,
+                skip_failed_test=self.skip_failed_test,
+                skip_preview_check=self.skip_preview_check,
+                skip_130mb_upload=self.skip_130mb_upload,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
+    def run_s3compatsigv4_institutional_storage_tests(self):
+        """Run S3CompatSigV4 institutional storage tests."""
+        print('\n=== S3CompatSigV4 Institutional Storage Tests ===')
+        if not self.s3compatsigv4_institutional_storage_enabled:
+            print('Skipping S3CompatSigV4 institutional storage tests (s3compatsigv4_institutional_storage_enabled=false)')
+            return
+
+        missing_params = [
+            name for name in [
+                's3compatsigv4_inst_endpoint_url',
+                's3compatsigv4_inst_access_key',
+                's3compatsigv4_inst_secret_key',
+                's3compatsigv4_inst_bucket',
+            ]
+            if not getattr(self, name, None)
+        ]
+        if missing_params:
+            print('Error: Missing S3CompatSigV4 institutional storage parameters: ' + ', '.join(missing_params))
+            sys.exit(1)
+
+        self.result_notebooks.append(
+            self.run_notebook(
+                'テスト手順-管理者機能-S3CompatSigV4-機関ストレージ.ipynb',
+                admin_rdm_url=self.admin_rdm_url,
+                s3_endpoint_url=self.s3compatsigv4_inst_endpoint_url,
+                s3_access_key=self.s3compatsigv4_inst_access_key,
+                s3_secret_key=self.s3compatsigv4_inst_secret_key,
+                s3_bucket=self.s3compatsigv4_inst_bucket,
+                target_organization=getattr(self, 'admin_target_organization', None),
+                skip_failed_test=self.skip_failed_test,
+                exclude_notebooks=self.exclude_notebooks,
+            )
+        )
+
     def run_metadata_tests(self):
         """Run metadata addon tests."""
         print('\n=== Metadata Tests ===')
@@ -551,6 +628,8 @@ class TestRunner:
         
         self.run_login_tests()
         self.run_storage_tests()
+        self.run_s3compatsigv4_tests()
+        self.run_s3compatsigv4_institutional_storage_tests()
         self.run_metadata_tests()
         self.run_admin_tests()
         self.run_jupyterhub_tests()

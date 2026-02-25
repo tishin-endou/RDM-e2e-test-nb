@@ -158,6 +158,20 @@ jobs:
             skip_login: true
             skip_130mb_upload: true
             minio_enabled: true
+            s3compatsigv4_enabled: true
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: admin-minio
+            display_name: "Admin Tests (MinIO)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: true
+            s3compatsigv4_institutional_storage: true
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
@@ -201,6 +215,8 @@ jobs:
     name: E2E ${{ matrix.test-group.display_name }}
     env:
       MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
+      S3COMPATSIGV4_ENABLED: ${{ matrix.test-group.s3compatsigv4_enabled == true && 'true' || 'false' }}
+      S3COMPATSIGV4_INST_ENABLED: ${{ matrix.test-group.s3compatsigv4_institutional_storage == true && 'true' || 'false' }}
       WEKO_ENABLED: ${{ matrix.test-group.weko_enabled == true && 'true' || 'false' }}
       JUPYTERHUB_ENABLED: ${{ matrix.test-group.jupyterhub_enabled == true && 'true' || 'false' }}
       FLOWABLE_ENABLED: ${{ matrix.test-group.flowable_enabled == true && 'true' || 'false' }}
@@ -787,6 +803,72 @@ jobs:
         echo "S3COMPAT_ENDPOINT=${MINIO_ENDPOINT}" >> $GITHUB_ENV
         echo "S3COMPAT_SERVICE_NAME=${MINIO_SERVICE_NAME}" >> $GITHUB_ENV
 
+    - name: Initialize MinIO for S3CompatSigV4 tests
+      if: env.MINIO_ENABLED == 'true' && (env.S3COMPATSIGV4_ENABLED == 'true' || env.S3COMPATSIGV4_INST_ENABLED == 'true')
+      working-directory: e2e-tests
+      run: |
+        set -eu
+
+        key_part() {
+          LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 18
+        }
+
+        secret_part() {
+          LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 40
+        }
+
+        BUCKET_PREFIX="ci-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-sigv4"
+
+        if [ "${S3COMPATSIGV4_ENABLED}" = "true" ]; then
+          ACCESS_KEY_1="ci$(key_part)"
+          SECRET_KEY_1="$(secret_part)"
+          ACCESS_KEY_2="ci$(key_part)"
+          SECRET_KEY_2="$(secret_part)"
+
+          BUCKET_NAME_1="${BUCKET_PREFIX}-a"
+          BUCKET_NAME_2="${BUCKET_PREFIX}-b"
+
+          .github/scripts/setup_minio_buckets.sh \
+            ../RDM-osf.io \
+            "${MINIO_ALIAS}" \
+            "${MINIO_ENDPOINT}" \
+            "${MINIO_ROOT_USER}" \
+            "${MINIO_ROOT_PASSWORD}" \
+            "${ACCESS_KEY_1}" "${SECRET_KEY_1}" "${BUCKET_NAME_1}" \
+            "${ACCESS_KEY_2}" "${SECRET_KEY_2}" "${BUCKET_NAME_2}"
+
+          echo "S3COMPATSIGV4_ACCESS_KEY_1=${ACCESS_KEY_1}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_SECRET_KEY_1=${SECRET_KEY_1}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_ACCESS_KEY_2=${ACCESS_KEY_2}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_SECRET_KEY_2=${SECRET_KEY_2}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_BUCKET_NAME_1=${BUCKET_NAME_1}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_BUCKET_NAME_2=${BUCKET_NAME_2}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_ENDPOINT=${MINIO_ENDPOINT}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_SERVICE_NAME=${MINIO_SERVICE_NAME}" >> $GITHUB_ENV
+        fi
+
+        if [ "${S3COMPATSIGV4_INST_ENABLED}" = "true" ]; then
+          INST_ACCESS_KEY="ci$(key_part)"
+          INST_SECRET_KEY="$(secret_part)"
+          INST_BUCKET="${BUCKET_PREFIX}-inst"
+
+          # Create institutional storage bucket using setup_minio_buckets.sh
+          # We reuse the script with the same key for both user slots
+          .github/scripts/setup_minio_buckets.sh \
+            ../RDM-osf.io \
+            "${MINIO_ALIAS}" \
+            "${MINIO_ENDPOINT}" \
+            "${MINIO_ROOT_USER}" \
+            "${MINIO_ROOT_PASSWORD}" \
+            "${INST_ACCESS_KEY}" "${INST_SECRET_KEY}" "${INST_BUCKET}" \
+            "${INST_ACCESS_KEY}" "${INST_SECRET_KEY}" "${INST_BUCKET}"
+
+          echo "S3COMPATSIGV4_INST_ACCESS_KEY=${INST_ACCESS_KEY}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_INST_SECRET_KEY=${INST_SECRET_KEY}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_INST_BUCKET=${INST_BUCKET}" >> $GITHUB_ENV
+          echo "S3COMPATSIGV4_INST_ENDPOINT=${MINIO_ENDPOINT}" >> $GITHUB_ENV
+        fi
+
     - name: Start MinIO trace
       if: env.MINIO_ENABLED == 'true'
       working-directory: RDM-osf.io
@@ -1004,6 +1086,12 @@ jobs:
         fi
         if [ "${FLOWABLE_ENABLED}" = "true" ]; then
           args+=(--flowable)
+        fi
+        if [ "${S3COMPATSIGV4_ENABLED}" = "true" ]; then
+          args+=(--s3compatsigv4)
+        fi
+        if [ "${S3COMPATSIGV4_INST_ENABLED}" = "true" ]; then
+          args+=(--s3compatsigv4-inst)
         fi
 
         .github/scripts/generate_ci_config.sh "${args[@]}"
