@@ -348,6 +348,9 @@ class TestRunner:
             self.run_notebook(
                 'テスト手順-管理者機能-S3CompatSigV4-機関ストレージ.ipynb',
                 admin_rdm_url=self.admin_rdm_url,
+                idp_name_1=self.idp_name_institutional_admin,
+                idp_username_1=self.idp_username_institutional_admin,
+                idp_password_1=self.idp_password_institutional_admin,
                 s3_endpoint_url=self.s3compatsigv4_inst_endpoint_url,
                 s3_access_key=self.s3compatsigv4_inst_access_key,
                 s3_secret_key=self.s3compatsigv4_inst_secret_key,
