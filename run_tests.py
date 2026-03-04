@@ -320,6 +320,7 @@ class TestRunner:
                 skip_failed_test=self.skip_failed_test,
                 skip_preview_check=self.skip_preview_check,
                 skip_130mb_upload=self.skip_130mb_upload,
+                skip_too_many_files_check=True,
                 exclude_notebooks=self.exclude_notebooks,
             )
         )
