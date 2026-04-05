@@ -150,8 +150,10 @@ class FileMetadataForm:
         # Basic info
         "ファイル種別": FieldType.RADIO,
         "データ No.": FieldType.INPUT,
-        "データの名称または論文表題 (日本語)": FieldType.INPUT,
-        "Title (English)": FieldType.INPUT,
+        "データの名称 (日本語)": FieldType.INPUT,
+        "Data title (English)": FieldType.INPUT,
+        "論文表題 (日本語)": FieldType.INPUT,
+        "Paper title (English)": FieldType.INPUT,
         "掲載日・掲載更新日": FieldType.INPUT_DIRECT,
         "データの説明 (日本語)": FieldType.TEXTAREA,
         "Description (English)": FieldType.TEXTAREA,
@@ -206,7 +208,7 @@ class FileMetadataForm:
         # Metadata access
         "メタデータのアクセス権": FieldType.SELECT,
         # Publication specific extra
-        "査読の有無": FieldType.SELECT,
+        "査読の有無": FieldType.RADIO,
         "版情報": FieldType.SELECT,
     }
 
@@ -214,8 +216,10 @@ class FileMetadataForm:
     # Group heading is in <strong> inside .metadata-group-heading
     # Sub-label is in <label> inside .form-group within the group
     _GROUPED: Dict[str, tuple] = {
-        "データの名称または論文表題 (日本語)": ("データの名称", "（日本語）"),
-        "Title (English)": ("データの名称", "（English）"),
+        "データの名称 (日本語)": ("データの名称", "（日本語）"),
+        "Data title (English)": ("データの名称", "（English）"),
+        "論文表題 (日本語)": ("論文表題", "（日本語）"),
+        "Paper title (English)": ("論文表題", "（English）"),
         "データの説明 (日本語)": ("データの説明", "（日本語）"),
         "Description (English)": ("データの説明", "（English）"),
         "管理対象データの利活用・提供方針 (有償/無償)": ("管理対象データの利活用・提供方針", "有償/無償"),
