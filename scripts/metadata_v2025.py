@@ -360,15 +360,50 @@ class FileMetadataForm:
             case FieldType.INPUT | FieldType.INPUT_DIRECT | FieldType.TEXTAREA:
                 return await locator.input_value()
             case FieldType.SELECT:
-                return await locator.locator("option:checked").text_content()
+                return await locator.input_value()
             case FieldType.RADIO:
-                return await locator.locator('input[type="radio"]:checked').evaluate(
-                    "el => el.parentElement.textContent.trim()"
-                )
+                checked = locator.locator('input[type="radio"]:checked')
+                if await checked.count() == 0:
+                    return ''
+                return await checked.input_value()
             case FieldType.TABLE:
                 raise ValueError("Use table methods for TABLE type fields")
             case FieldType.NAME_TABLE:
                 raise ValueError("Use get_name for NAME_TABLE type fields")
+
+    def _get_any_locator(self, label: str):
+        """Get a locator for any field type, including NAME_TABLE."""
+        field_type = self.FIELDS[label]
+        if field_type == FieldType.NAME_TABLE:
+            return self._get_name_table_locator(label)
+        return self._get_locator(label, field_type)
+
+    def get_clear_checkbox(self, label: str):
+        """Get the clear checkbox locator for a field (multiple-edit mode)."""
+        locator = self._get_any_locator(label)
+        form_group = locator.locator('xpath=ancestor::div[contains(@class, "form-group")][1]')
+        return form_group.locator('input.metadata-form-clear-checkbox')
+
+    async def expect_cleared(self, label: str, expect_fn, timeout: int) -> None:
+        """Assert that a field is properly disabled after clear.
+
+        Uses the appropriate assertion for each field type:
+        - RADIO/NAME_TABLE: all inputs must be disabled (none remain enabled)
+        - TABLE: "追加" link must have disabled class
+        - Others: the field element itself must be disabled
+        """
+        import re
+        field_type = self.FIELDS[label]
+        locator = self._get_any_locator(label)
+        match field_type:
+            case FieldType.RADIO:
+                await expect_fn(locator.locator('input[type="radio"]:not([disabled])')).to_have_count(0, timeout=timeout)
+            case FieldType.TABLE:
+                await expect_fn(locator.locator('xpath=.//a[span[text() = "追加"]]')).to_have_class(re.compile(r'.*disabled.*'), timeout=timeout)
+            case FieldType.NAME_TABLE:
+                await expect_fn(locator.locator('tbody td input:not([disabled])')).to_have_count(0, timeout=timeout)
+            case _:
+                await expect_fn(locator).to_be_disabled(timeout=timeout)
 
     async def scroll_to(self, label: str) -> None:
         """Scroll to make a field visible."""
@@ -487,3 +522,36 @@ class FileMetadataForm:
         ).fill(author['affiliation_en'])
 
         await panel.locator('.hide-edit-row').click()
+
+    async def get_author(self, table_label: str = "著者名", row_index: int = 0) -> Dict[str, Any]:
+        """Read author/creator data from a table row's edit panel."""
+        container = self.get_locator(table_label)
+        panel = container.locator('tr.metadata-edit-mode').nth(row_index)
+
+        number = await panel.locator(
+            'xpath=.//label[contains(text(), "e-Rad 研究者番号")]/following-sibling::div[1]//input'
+        ).input_value()
+
+        ja_table = await self._find_name_table(panel, "姓")
+        name_ja = await self._get_name_table(ja_table)
+
+        en_table = await self._find_name_table(panel, "Last Name")
+        name_en = await self._get_name_table(en_table)
+
+        affil_section = panel.locator(
+            'xpath=.//strong[contains(text(), "所属機関名")]/parent::*/following-sibling::div[1]'
+        )
+        affiliation_ja = await affil_section.locator(
+            'xpath=.//label[contains(text(), "（日本語）")]/following-sibling::div[1]//input'
+        ).input_value()
+        affiliation_en = await affil_section.locator(
+            'xpath=.//label[contains(text(), "（English）")]/following-sibling::div[1]//input'
+        ).input_value()
+
+        return {
+            'number': number,
+            'name_ja': name_ja,
+            'name_en': name_en,
+            'affiliation_ja': affiliation_ja,
+            'affiliation_en': affiliation_en,
+        }
