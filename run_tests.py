@@ -62,6 +62,7 @@ class TestRunner:
         self.weko_index_name = None
         self.weko_docker_compose_path = None
         self.sword_mapping_id = 30002
+        self.weko_test_mode = 'direct'
         self.ignore_https_errors = False
         # Workflow specific parameters
         self.workflow_enabled = False
@@ -393,6 +394,7 @@ class TestRunner:
                 weko_index_name=self.weko_index_name,
                 weko_docker_compose_path=self.weko_docker_compose_path,
                 sword_mapping_id=self.sword_mapping_id,
+                weko_test_mode=self.weko_test_mode,
                 ignore_https_errors=self.ignore_https_errors,
                 idp_name_2=getattr(self, 'idp_name_2', None),
                 idp_username_2=getattr(self, 'idp_username_2', None),

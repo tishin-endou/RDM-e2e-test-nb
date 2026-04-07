@@ -103,6 +103,7 @@ if [[ "${WEKO}" == "true" ]]; then
   WEKO_INDEX_NAME_VALUE=${WEKO_INDEX_NAME:-'Sample Index'}
   WEKO_DOCKER_COMPOSE_PATH_VALUE=${WEKO_DOCKER_COMPOSE_PATH:-}
   SWORD_MAPPING_ID_VALUE=${SWORD_MAPPING_ID:-30002}
+  WEKO_TEST_MODE_VALUE=${WEKO_TEST_MODE:-direct}
   IGNORE_HTTPS_ERRORS_VALUE=${IGNORE_HTTPS_ERRORS:-false}
 
   cat >> "${OUTPUT}" <<EOF
@@ -117,6 +118,7 @@ weko_institution_name: '${WEKO_INSTITUTION_NAME_VALUE}'
 weko_index_name: '${WEKO_INDEX_NAME_VALUE}'
 weko_docker_compose_path: '${WEKO_DOCKER_COMPOSE_PATH_VALUE}'
 sword_mapping_id: ${SWORD_MAPPING_ID_VALUE}
+weko_test_mode: '${WEKO_TEST_MODE_VALUE}'
 ignore_https_errors: ${IGNORE_HTTPS_ERRORS_VALUE}
 EOF
 fi

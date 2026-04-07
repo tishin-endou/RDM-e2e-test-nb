@@ -153,8 +153,8 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
-          - name: user-weko
-            display_name: "User Tests (WEKO)"
+          - name: user-weko-direct
+            display_name: "User Tests (WEKO Direct)"
             include_admin: true
             skip_admin: true
             skip_metadata: true
@@ -163,6 +163,20 @@ jobs:
             skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: true
+            weko_test_mode: direct
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-weko-workflow
+            display_name: "User Tests (WEKO Workflow)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: true
+            weko_test_mode: workflow
             jupyterhub_enabled: false
             flowable_enabled: false
           - name: user-jupyterhub
@@ -766,6 +780,7 @@ jobs:
         echo "WEKO_INSTITUTION_NAME=Virginia Tech [Test]" >> $GITHUB_ENV
         echo "WEKO_INDEX_NAME=Sample Index" >> $GITHUB_ENV
         echo "WEKO_DOCKER_COMPOSE_PATH=${{ github.workspace }}/weko/docker-compose2.yml" >> $GITHUB_ENV
+        echo "WEKO_TEST_MODE=${{ matrix.test-group.weko_test_mode || 'direct' }}" >> $GITHUB_ENV
         echo "IGNORE_HTTPS_ERRORS=true" >> $GITHUB_ENV
 
     - name: Verify RDM containers can connect to WEKO via HTTPS
@@ -930,6 +945,7 @@ jobs:
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
         weko_enabled: ${{ matrix.test-group.weko_enabled == true }}
+        weko_test_mode: ${{ matrix.test-group.weko_test_mode || 'direct' }}
         enable_1gb_file_upload: false
         skip_erad_completion_test: false
         storages_oauth: []
