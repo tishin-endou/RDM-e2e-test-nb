@@ -83,6 +83,7 @@ class TestRunner:
         self.idp_username_other_institution = None
         self.idp_password_other_institution = None
         self.workflow_batch_project_count = 50
+        self.workflow_test_mode = None
         self.institution_name = None
         
         # Exclude notebooks
@@ -427,6 +428,7 @@ class TestRunner:
                 'idp_username_other_institution',
                 'idp_password_other_institution',
                 'institution_name',
+                'workflow_test_mode',
             ]
             if not getattr(self, name, None)
         ]
@@ -453,6 +455,7 @@ class TestRunner:
                 idp_password_other_institution=self.idp_password_other_institution,
                 batch_project_count=self.workflow_batch_project_count,
                 institution_name=self.institution_name,
+                workflow_test_mode=self.workflow_test_mode,
                 skip_failed_test=self.skip_failed_test,
                 exclude_notebooks=self.exclude_notebooks,
             )

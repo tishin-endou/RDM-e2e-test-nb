@@ -191,8 +191,8 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: true
             flowable_enabled: false
-          - name: user-workflow
-            display_name: "User Tests (Flowable)"
+          - name: user-workflow-roles
+            display_name: "User Tests (Flowable Roles)"
             include_admin: true
             skip_admin: true
             skip_metadata: true
@@ -203,6 +203,33 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: true
+            workflow_test_mode: roles
+          - name: user-workflow-forms
+            display_name: "User Tests (Flowable Forms)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_test_mode: forms
+          - name: user-workflow-batch
+            display_name: "User Tests (Flowable Batch)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_test_mode: batch
             workflow_batch_project_count: 50
     name: E2E ${{ matrix.test-group.display_name }}
     env:
@@ -807,6 +834,7 @@ jobs:
       run: |
         echo "GATEWAY_BASE_URL=http://192.168.168.167:8088/" >> $GITHUB_ENV
         echo "WORKFLOW_BATCH_PROJECT_COUNT=${{ matrix.test-group.workflow_batch_project_count || 50 }}" >> $GITHUB_ENV
+        echo "WORKFLOW_TEST_MODE=${{ matrix.test-group.workflow_test_mode }}" >> $GITHUB_ENV
 
     - name: Install TLJH stack
       if: env.JUPYTERHUB_ENABLED == 'true'

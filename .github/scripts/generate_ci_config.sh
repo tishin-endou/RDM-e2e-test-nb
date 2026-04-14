@@ -126,6 +126,10 @@ fi
 if [[ "${FLOWABLE}" == "true" ]]; then
   GATEWAY_BASE_URL_VALUE=${GATEWAY_BASE_URL:-http://192.168.168.167:8088/}
   WORKFLOW_BATCH_PROJECT_COUNT_VALUE=${WORKFLOW_BATCH_PROJECT_COUNT:-50}
+  if [[ -z "${WORKFLOW_TEST_MODE:-}" ]]; then
+    echo "Error: WORKFLOW_TEST_MODE must be set when --flowable is enabled (one of: roles, forms, batch)" >&2
+    exit 1
+  fi
 
   cat >> "${OUTPUT}" <<EOF
 
@@ -133,6 +137,7 @@ if [[ "${FLOWABLE}" == "true" ]]; then
 workflow_enabled: true
 gateway_base_url: '${GATEWAY_BASE_URL_VALUE}'
 workflow_batch_project_count: ${WORKFLOW_BATCH_PROJECT_COUNT_VALUE}
+workflow_test_mode: '${WORKFLOW_TEST_MODE}'
 EOF
 else
   cat >> "${OUTPUT}" <<'EOF'
