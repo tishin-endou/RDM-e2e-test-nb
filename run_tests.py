@@ -46,7 +46,7 @@ class TestRunner:
         self.skip_admin = False
         self.skip_login = False
         self.enable_1gb_file_upload = False
-        self.skip_erad_completion_test = False
+        self.skip_autofill = False
         self.jupyterhub_enabled = False
         self.tljh_url = None
         self.tljh_username = None
@@ -295,7 +295,7 @@ class TestRunner:
                     idp_username_2=getattr(self, 'idp_username_2', None),
                     idp_password_2=getattr(self, 'idp_password_2', None),
                     skip_failed_test=self.skip_failed_test,
-                    skip_erad_completion_test=self.skip_erad_completion_test,
+                    skip_autofill=self.skip_autofill,
                     exclude_notebooks=self.exclude_notebooks,
                 )
             )

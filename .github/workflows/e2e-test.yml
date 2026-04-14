@@ -85,6 +85,20 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_autofill: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-metadata
+            display_name: "User Tests (Metadata)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: false
+            skip_autofill: false
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: false
             jupyterhub_enabled: false
@@ -146,6 +160,7 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_autofill: true
             skip_default_storage: true
             skip_login: true
             skip_130mb_upload: true
@@ -975,7 +990,7 @@ jobs:
         weko_enabled: ${{ matrix.test-group.weko_enabled == true }}
         weko_test_mode: ${{ matrix.test-group.weko_test_mode || 'direct' }}
         enable_1gb_file_upload: false
-        skip_erad_completion_test: false
+        skip_autofill: ${{ matrix.test-group.skip_autofill == true }}
         storages_oauth: []
         EOF
 
