@@ -408,7 +408,10 @@ class FileMetadataForm:
     async def scroll_to(self, label: str) -> None:
         """Scroll to make a field visible."""
         field_type = self.FIELDS[label]
-        locator = self._get_locator(label, field_type)
+        if field_type == FieldType.NAME_TABLE:
+            locator = self._get_name_table_locator(label)
+        else:
+            locator = self._get_locator(label, field_type)
         await locator.scroll_into_view_if_needed()
 
     # Name table operations

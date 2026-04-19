@@ -48,8 +48,11 @@ async def login_as_admin(page, idp_name, idp_username, idp_password, transition_
         idplist = page.locator('//form[@id = "IdPList"]//input[@type = "text"]')
         await idplist.fill(idp_name);
         await idplist.press('Enter');
-        await page.locator(f'//div[@class = "select" and text() = "{idp_name}"]').click()
-    
+        # ドロップダウンリストから一致するIdPをクリック
+        idp_option = page.locator(f'//div[@class = "wayf_list_idp" and text() = "{idp_name}"]').first
+        await expect(idp_option).to_be_visible(timeout=transition_timeout)
+        await idp_option.click()
+
         # 選択ボタンが有効になったことを確認
         locator_wayf_submit = page.locator('//input[@id = "wayf_submit_button"]')
         await expect(locator_wayf_submit).to_be_enabled(timeout=transition_timeout)
@@ -402,3 +405,69 @@ async def enable_addon(page, addon_name, transition_timeout=10000):
         await confirm_button.click()
     else:
         print('Addon already enabled')
+
+async def _expect_empty_or_not(locator, expected):
+    if expected == 'nonempty':
+        await expect(locator).not_to_be_empty()
+    elif expected == 'empty':
+        await expect(locator).to_be_empty()
+    else:
+        raise ValueError(f'expected must be "empty" or "nonempty", got {expected!r}')
+
+async def verify_property_file_info(
+    page, filesize, filepath, *,
+    expected_createtime, expected_updatetime, expected_updateby,
+):
+    locator_size = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "サイズ: "]/following-sibling::span')
+    locator_createtime = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "作成日時: "]/following-sibling::span')
+    locator_updatetime = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "更新日時: "]/following-sibling::span')
+    locator_updateby = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "最終更新者: "]/following-sibling::span')
+    locator_path = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "パス: "]/following-sibling::span')
+
+    await locator_size.scroll_into_view_if_needed()
+    await expect(locator_size).to_have_text(filesize)
+    time.sleep(1)
+
+    await locator_createtime.scroll_into_view_if_needed()
+    await _expect_empty_or_not(locator_createtime, expected_createtime)
+    await locator_updatetime.scroll_into_view_if_needed()
+    await _expect_empty_or_not(locator_updatetime, expected_updatetime)
+    await locator_updateby.scroll_into_view_if_needed()
+    await _expect_empty_or_not(locator_updateby, expected_updateby)
+
+    await locator_path.scroll_into_view_if_needed()
+    await expect(locator_path).to_have_text(filepath)
+
+    time.sleep(1)
+
+async def verify_property_folder_info(
+    page, filenumber, foldersize, folderpath, *,
+    expected_createtime, expected_updatetime, expected_updateby,
+):
+    await expect(page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "読み込み中..."]')).not_to_be_visible(timeout=60000)
+    time.sleep(2)
+
+    locator_filenumber = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "合計ファイル数: "]/following-sibling::span')
+    locator_size = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "合計サイズ: "]/following-sibling::span')
+    locator_createtime = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "作成日時: "]/following-sibling::span')
+    locator_updatetime = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "更新日時: "]/following-sibling::span')
+    locator_updateby = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "最終更新者: "]/following-sibling::span')
+    locator_path = page.locator('//*[@id = "tb-tbody"]//*[@class = "modal-content"]//*[text() = "パス: "]/following-sibling::span')
+
+    await locator_filenumber.scroll_into_view_if_needed()
+    await expect(locator_filenumber).to_have_text(filenumber)
+    await locator_size.scroll_into_view_if_needed()
+    await expect(locator_size).to_have_text(foldersize)
+    time.sleep(1)
+
+    await locator_createtime.scroll_into_view_if_needed()
+    await _expect_empty_or_not(locator_createtime, expected_createtime)
+    await locator_updatetime.scroll_into_view_if_needed()
+    await _expect_empty_or_not(locator_updatetime, expected_updatetime)
+    await locator_updateby.scroll_into_view_if_needed()
+    await _expect_empty_or_not(locator_updateby, expected_updateby)
+
+    await locator_path.scroll_into_view_if_needed()
+    await expect(locator_path).to_have_text(folderpath)
+
+    time.sleep(1)
