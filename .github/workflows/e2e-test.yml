@@ -162,6 +162,19 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
+          - name: user-aws-s3
+            display_name: "User Tests (AWS S3 SigV4 Regions)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            aws_s3_enabled: true
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
           - name: admin-minio
             display_name: "Admin Tests (MinIO)"
             include_admin: true
@@ -215,6 +228,7 @@ jobs:
     name: E2E ${{ matrix.test-group.display_name }}
     env:
       MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
+      AWS_S3_ENABLED: ${{ matrix.test-group.aws_s3_enabled == true && 'true' || 'false' }}
       S3COMPATSIGV4_ENABLED: ${{ matrix.test-group.s3compatsigv4_enabled == true && 'true' || 'false' }}
       S3COMPATSIGV4_INST_ENABLED: ${{ matrix.test-group.s3compatsigv4_institutional_storage == true && 'true' || 'false' }}
       WEKO_ENABLED: ${{ matrix.test-group.weko_enabled == true && 'true' || 'false' }}
@@ -226,6 +240,12 @@ jobs:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_REGION: us-east-1
       MINIO_SERVICE_NAME: MinIO (CI)
+      AWS_S3_ACCESS_KEY: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_ACCESS_KEY || '' }}
+      AWS_S3_SECRET_KEY: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_SECRET_KEY || '' }}
+      AWS_S3_LEGACY_REGION: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_LEGACY_REGION || '' }}
+      AWS_S3_LEGACY_BUCKET_NAME: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_LEGACY_BUCKET_NAME || '' }}
+      AWS_S3_V4_REGION: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_V4_REGION || '' }}
+      AWS_S3_V4_BUCKET_NAME: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_V4_BUCKET_NAME || '' }}
 
     steps:
     - name: Checkout test repository
@@ -1077,6 +1097,9 @@ jobs:
         args=(ci.config.yaml base_ci.config.yaml)
         if [ "${MINIO_ENABLED}" = "true" ]; then
           args+=(--minio)
+        fi
+        if [ "${AWS_S3_ENABLED}" = "true" ]; then
+          args+=(--aws-s3)
         fi
         if [ "${JUPYTERHUB_ENABLED}" = "true" ]; then
           args+=(--jupyterhub)
