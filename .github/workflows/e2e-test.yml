@@ -240,8 +240,10 @@ jobs:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_REGION: us-east-1
       MINIO_SERVICE_NAME: MinIO (CI)
-      AWS_S3_ACCESS_KEY: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_ACCESS_KEY || '' }}
-      AWS_S3_SECRET_KEY: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_SECRET_KEY || '' }}
+      AWS_S3_ACCESS_KEY_1: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_ACCESS_KEY_1 || '' }}
+      AWS_S3_SECRET_KEY_1: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_SECRET_KEY_1 || '' }}
+      AWS_S3_ACCESS_KEY_2: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_ACCESS_KEY_2 || '' }}
+      AWS_S3_SECRET_KEY_2: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_SECRET_KEY_2 || '' }}
       AWS_S3_LEGACY_REGION: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_LEGACY_REGION || '' }}
       AWS_S3_LEGACY_BUCKET_NAME: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_LEGACY_BUCKET_NAME || '' }}
       AWS_S3_V4_REGION: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_V4_REGION || '' }}
@@ -1042,6 +1044,28 @@ jobs:
         docker-compose exec -T web python3 -m scripts.register_erad_metadata /tmp/erad_sample.csv
         echo "e-Rad data registered successfully"
 
+    - name: Validate and mask sensitive test credentials
+      working-directory: e2e-tests
+      run: |
+        set -euo pipefail
+
+        bash .github/scripts/mask_sensitive_artifacts.sh /tmp/nonexistent-mask-target
+
+        if [ "${AWS_S3_ENABLED}" = "true" ]; then
+          if [ -z "${AWS_S3_ACCESS_KEY_1}" ] || [ -z "${AWS_S3_SECRET_KEY_1}" ] || [ -z "${AWS_S3_ACCESS_KEY_2}" ] || [ -z "${AWS_S3_SECRET_KEY_2}" ]; then
+            echo "AWS S3 test credentials are not fully configured. Set AWS_S3_ACCESS_KEY_1, AWS_S3_SECRET_KEY_1, AWS_S3_ACCESS_KEY_2, and AWS_S3_SECRET_KEY_2 secrets."
+            exit 1
+          fi
+          if [ "${AWS_S3_ACCESS_KEY_1}" = "${AWS_S3_ACCESS_KEY_2}" ]; then
+            echo "AWS_S3_ACCESS_KEY_1 and AWS_S3_ACCESS_KEY_2 must be different."
+            exit 1
+          fi
+          if [ "${AWS_S3_SECRET_KEY_1}" = "${AWS_S3_SECRET_KEY_2}" ]; then
+            echo "AWS_S3_SECRET_KEY_1 and AWS_S3_SECRET_KEY_2 must be different."
+            exit 1
+          fi
+        fi
+
     - name: Prepare test configuration
       working-directory: e2e-tests
       run: |
@@ -1174,6 +1198,12 @@ jobs:
         fi
         echo "ticket=$TICKET" >> $GITHUB_OUTPUT
         echo "Extracted ticket: $TICKET"
+
+    - name: Mask sensitive values in test artifacts
+      if: always()
+      working-directory: e2e-tests
+      run: |
+        bash .github/scripts/mask_sensitive_artifacts.sh result result-failed
 
     - name: Generate Excel summary
       if: always()

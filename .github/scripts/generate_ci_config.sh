@@ -92,8 +92,10 @@ fi
 
 if [[ "${AWS_S3}" == "true" ]]; then
   required_aws_s3_vars=(
-    AWS_S3_ACCESS_KEY
-    AWS_S3_SECRET_KEY
+    AWS_S3_ACCESS_KEY_1
+    AWS_S3_SECRET_KEY_1
+    AWS_S3_ACCESS_KEY_2
+    AWS_S3_SECRET_KEY_2
     AWS_S3_LEGACY_REGION
     AWS_S3_LEGACY_BUCKET_NAME
     AWS_S3_V4_REGION
@@ -112,6 +114,16 @@ if [[ "${AWS_S3}" == "true" ]]; then
     exit 1
   fi
 
+  if [[ "${AWS_S3_ACCESS_KEY_1}" == "${AWS_S3_ACCESS_KEY_2}" ]]; then
+    echo "AWS_S3_ACCESS_KEY_1 and AWS_S3_ACCESS_KEY_2 must be different" >&2
+    exit 1
+  fi
+
+  if [[ "${AWS_S3_SECRET_KEY_1}" == "${AWS_S3_SECRET_KEY_2}" ]]; then
+    echo "AWS_S3_SECRET_KEY_1 and AWS_S3_SECRET_KEY_2 must be different" >&2
+    exit 1
+  fi
+
   cat >> "${OUTPUT}" <<EOF
 
 storages_s3:
@@ -119,13 +131,13 @@ storages_s3:
     name: 'Amazon S3'
     skip_too_many_files_check: true
 
-s3_access_key_1: '${AWS_S3_ACCESS_KEY}'
-s3_secret_access_key_1: '${AWS_S3_SECRET_KEY}'
+s3_access_key_1: '${AWS_S3_ACCESS_KEY_1}'
+s3_secret_access_key_1: '${AWS_S3_SECRET_KEY_1}'
 s3_default_region_1: '${AWS_S3_LEGACY_REGION}'
 s3_test_bucket_name_1: '${AWS_S3_LEGACY_BUCKET_NAME}'
 
-s3_access_key_2: '${AWS_S3_ACCESS_KEY}'
-s3_secret_access_key_2: '${AWS_S3_SECRET_KEY}'
+s3_access_key_2: '${AWS_S3_ACCESS_KEY_2}'
+s3_secret_access_key_2: '${AWS_S3_SECRET_KEY_2}'
 s3_default_region_2: '${AWS_S3_V4_REGION}'
 s3_test_bucket_name_2: '${AWS_S3_V4_BUCKET_NAME}'
 EOF
