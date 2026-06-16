@@ -173,7 +173,7 @@ async def _save_screenshot(last_path=None):
     if current_pages is None or len(current_pages) == 0:
         return
     screenshot_path = os.path.join(temp_dir, 'last-screenshot.png')
-    await current_pages[-1].screenshot(path=screenshot_path)
+    await current_pages[-1].screenshot(path=screenshot_path, full_page=True)
     dest_screenshot_path = os.path.join(last_path or default_last_path, 'last-screenshot.png')
     shutil.copyfile(screenshot_path, dest_screenshot_path)
     print(f'Screenshot: {dest_screenshot_path}')
