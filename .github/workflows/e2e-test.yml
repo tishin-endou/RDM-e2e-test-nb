@@ -177,20 +177,15 @@ jobs:
               initial_data_notebook: "取りまとめ-Migration前-20250906.ipynb"
               post_migration_notebook: "取りまとめ-Migration後-20250906-weko.ipynb"
             exclude_notebooks: |
-              テスト手順-管理者機能-ログイン可否設定.ipynb
-              テスト手順-管理者機能-ノード管理.ipynb
-              テスト手順-管理者機能-ユーザ管理.ipynb
-              テスト手順-管理者機能-機関設定.ipynb
-              テスト手順-管理者機能-RDMユーザメール.ipynb
-              テスト手順-管理者機能-RDM登録.ipynb
-              テスト手順-管理者機能-アドオン利用制御.ipynb
-              テスト手順-管理者機能-利用統計.ipynb
-              テスト手順-管理者機能-アナウンス.ipynb
-              テスト手順-管理者機能-証跡管理.ipynb
-              テスト手順-管理者機能-NIIストレージのクォータ.ipynb
+              テスト手順-WEKOアドオン-メタデータ送信-書誌情報.ipynb
+              テスト手順-WEKOアドオン-メタデータ送信-書誌情報＋根拠データ.ipynb
             minio_enabled: false
             weko_enabled: true
             weko_test_mode: direct
+            skip_login: true
+            skip_default_storage: true
+            skip_metadata: true
+            skip_admin: true
             jupyterhub_enabled: false
             flowable_enabled: false
           - name: user-minio
@@ -1047,37 +1042,31 @@ jobs:
         # Create result directory (parent already exists from checkout)
         mkdir -p ../result
 
-        # Pass WEKO connection parameters when WEKO is enabled
-        WEKO_ARGS=()
+        # Build a typed parameter file via generate_ci_config.sh (single source of
+        # type resolution, e.g. ignore_https_errors -> bool) instead of -p strings.
+        cat > /tmp/post_base.config.yaml <<'EOF'
+        rdm_url: 'http://192.168.168.167:5000/'
+        admin_rdm_url: 'http://192.168.168.167:8001/'
+        idp_name_1: 'FakeCAS'
+        idp_username_1: 'testuser1@example.com'
+        idp_password_1: 'testpass123'
+        idp_name_2: 'FakeCAS'
+        idp_username_2: 'testuser2@example.com'
+        idp_password_2: 'testpass456'
+        transition_timeout: 60000
+        EOF
+
+        CONFIG_ARGS=(/tmp/post.config.yaml /tmp/post_base.config.yaml)
         if [ "${WEKO_ENABLED}" = "true" ]; then
-          WEKO_ARGS=(
-            -p weko_url "${WEKO_URL}"
-            -p weko_admin_email "${WEKO_ADMIN_EMAIL}"
-            -p weko_admin_password "${WEKO_ADMIN_PASSWORD}"
-            -p weko_user_email "${WEKO_USER_EMAIL}"
-            -p weko_user_password "${WEKO_USER_PASSWORD}"
-            -p weko_institution_name "${WEKO_INSTITUTION_NAME}"
-            -p weko_index_name "${WEKO_INDEX_NAME}"
-            -p weko_docker_compose_path "${WEKO_DOCKER_COMPOSE_PATH}"
-            -p weko_test_mode "${WEKO_TEST_MODE}"
-            -p ignore_https_errors "${IGNORE_HTTPS_ERRORS}"
-          )
+          CONFIG_ARGS+=(--weko)
         fi
+        ../.github/scripts/generate_ci_config.sh "${CONFIG_ARGS[@]}"
 
         # Execute the post-migration test notebook
         papermill ${{ matrix.test-group.migration_from.post_migration_notebook }} \
           ../result/${{ matrix.test-group.migration_from.post_migration_notebook }} \
-          -p rdm_url "http://192.168.168.167:5000/" \
-          -p admin_rdm_url "http://192.168.168.167:8001/" \
-          -p idp_name_1 "FakeCAS" \
-          -p idp_username_1 "testuser1@example.com" \
-          -p idp_password_1 "testpass123" \
-          -p idp_name_2 "FakeCAS" \
-          -p idp_username_2 "testuser2@example.com" \
-          -p idp_password_2 "testpass456" \
-          -p default_result_path "../result" \
-          -p transition_timeout 60000 \
-          "${WEKO_ARGS[@]}"
+          -f /tmp/post.config.yaml \
+          -p default_result_path "../result"
 
         echo "Post-migration tests completed"
 
