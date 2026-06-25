@@ -93,6 +93,20 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_autofill: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-metadata
+            display_name: "User Tests (Metadata)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: false
+            skip_autofill: false
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: false
             jupyterhub_enabled: false
@@ -154,11 +168,25 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_autofill: true
             skip_default_storage: true
             skip_login: true
             skip_130mb_upload: true
             minio_enabled: true
             s3compatsigv4_enabled: true
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-aws-s3
+            display_name: "User Tests (AWS S3 SigV4 Regions)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            aws_s3_enabled: true
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
@@ -175,8 +203,8 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
-          - name: user-weko
-            display_name: "User Tests (WEKO)"
+          - name: user-weko-direct
+            display_name: "User Tests (WEKO Direct)"
             include_admin: true
             skip_admin: true
             skip_metadata: true
@@ -185,6 +213,20 @@ jobs:
             skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: true
+            weko_test_mode: direct
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-weko-workflow
+            display_name: "User Tests (WEKO Workflow)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: true
+            weko_test_mode: workflow
             jupyterhub_enabled: false
             flowable_enabled: false
           - name: user-jupyterhub
@@ -199,8 +241,8 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: true
             flowable_enabled: false
-          - name: user-workflow
-            display_name: "User Tests (Flowable)"
+          - name: user-workflow-roles
+            display_name: "User Tests (Flowable Roles)"
             include_admin: true
             skip_admin: true
             skip_metadata: true
@@ -211,10 +253,38 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: true
+            workflow_test_mode: roles
+          - name: user-workflow-forms
+            display_name: "User Tests (Flowable Forms)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_test_mode: forms
+          - name: user-workflow-batch
+            display_name: "User Tests (Flowable Batch)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_test_mode: batch
             workflow_batch_project_count: 50
     name: E2E ${{ matrix.test-group.display_name }}
     env:
       MINIO_ENABLED: ${{ matrix.test-group.minio_enabled == true && 'true' || 'false' }}
+      AWS_S3_ENABLED: ${{ matrix.test-group.aws_s3_enabled == true && 'true' || 'false' }}
       S3COMPATSIGV4_ENABLED: ${{ matrix.test-group.s3compatsigv4_enabled == true && 'true' || 'false' }}
       S3COMPATSIGV4_INST_ENABLED: ${{ matrix.test-group.s3compatsigv4_institutional_storage == true && 'true' || 'false' }}
       WEKO_ENABLED: ${{ matrix.test-group.weko_enabled == true && 'true' || 'false' }}
@@ -226,6 +296,14 @@ jobs:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_REGION: us-east-1
       MINIO_SERVICE_NAME: MinIO (CI)
+      AWS_S3_ACCESS_KEY_1: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_ACCESS_KEY_1 || '' }}
+      AWS_S3_SECRET_KEY_1: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_SECRET_KEY_1 || '' }}
+      AWS_S3_ACCESS_KEY_2: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_ACCESS_KEY_2 || '' }}
+      AWS_S3_SECRET_KEY_2: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_SECRET_KEY_2 || '' }}
+      AWS_S3_LEGACY_REGION: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_LEGACY_REGION || '' }}
+      AWS_S3_LEGACY_BUCKET_NAME: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_LEGACY_BUCKET_NAME || '' }}
+      AWS_S3_V4_REGION: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_V4_REGION || '' }}
+      AWS_S3_V4_BUCKET_NAME: ${{ matrix.test-group.aws_s3_enabled == true && secrets.AWS_S3_V4_BUCKET_NAME || '' }}
 
     steps:
     - name: Checkout test repository
@@ -905,6 +983,7 @@ jobs:
         echo "WEKO_INSTITUTION_NAME=Virginia Tech [Test]" >> $GITHUB_ENV
         echo "WEKO_INDEX_NAME=Sample Index" >> $GITHUB_ENV
         echo "WEKO_DOCKER_COMPOSE_PATH=${{ github.workspace }}/weko/docker-compose2.yml" >> $GITHUB_ENV
+        echo "WEKO_TEST_MODE=${{ matrix.test-group.weko_test_mode || 'direct' }}" >> $GITHUB_ENV
         echo "IGNORE_HTTPS_ERRORS=true" >> $GITHUB_ENV
 
     - name: Verify RDM containers can connect to WEKO via HTTPS
@@ -931,6 +1010,7 @@ jobs:
       run: |
         echo "GATEWAY_BASE_URL=http://192.168.168.167:8088/" >> $GITHUB_ENV
         echo "WORKFLOW_BATCH_PROJECT_COUNT=${{ matrix.test-group.workflow_batch_project_count || 50 }}" >> $GITHUB_ENV
+        echo "WORKFLOW_TEST_MODE=${{ matrix.test-group.workflow_test_mode }}" >> $GITHUB_ENV
 
     - name: Install TLJH stack
       if: env.JUPYTERHUB_ENABLED == 'true'
@@ -1022,6 +1102,28 @@ jobs:
         docker-compose exec -T web python3 -m scripts.register_erad_metadata /tmp/erad_sample.csv
         echo "e-Rad data registered successfully"
 
+    - name: Validate and mask sensitive test credentials
+      working-directory: e2e-tests
+      run: |
+        set -euo pipefail
+
+        bash .github/scripts/mask_sensitive_artifacts.sh /tmp/nonexistent-mask-target
+
+        if [ "${AWS_S3_ENABLED}" = "true" ]; then
+          if [ -z "${AWS_S3_ACCESS_KEY_1}" ] || [ -z "${AWS_S3_SECRET_KEY_1}" ] || [ -z "${AWS_S3_ACCESS_KEY_2}" ] || [ -z "${AWS_S3_SECRET_KEY_2}" ]; then
+            echo "AWS S3 test credentials are not fully configured. Set AWS_S3_ACCESS_KEY_1, AWS_S3_SECRET_KEY_1, AWS_S3_ACCESS_KEY_2, and AWS_S3_SECRET_KEY_2 secrets."
+            exit 1
+          fi
+          if [ "${AWS_S3_ACCESS_KEY_1}" = "${AWS_S3_ACCESS_KEY_2}" ]; then
+            echo "AWS_S3_ACCESS_KEY_1 and AWS_S3_ACCESS_KEY_2 must be different."
+            exit 1
+          fi
+          if [ "${AWS_S3_SECRET_KEY_1}" = "${AWS_S3_SECRET_KEY_2}" ]; then
+            echo "AWS_S3_SECRET_KEY_1 and AWS_S3_SECRET_KEY_2 must be different."
+            exit 1
+          fi
+        fi
+
     - name: Prepare test configuration
       working-directory: e2e-tests
       run: |
@@ -1069,14 +1171,18 @@ jobs:
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
         weko_enabled: ${{ matrix.test-group.weko_enabled == true }}
+        weko_test_mode: ${{ matrix.test-group.weko_test_mode || 'direct' }}
         enable_1gb_file_upload: false
-        skip_erad_completion_test: false
+        skip_autofill: ${{ matrix.test-group.skip_autofill == true }}
         storages_oauth: []
         EOF
 
         args=(ci.config.yaml base_ci.config.yaml)
         if [ "${MINIO_ENABLED}" = "true" ]; then
           args+=(--minio)
+        fi
+        if [ "${AWS_S3_ENABLED}" = "true" ]; then
+          args+=(--aws-s3)
         fi
         if [ "${JUPYTERHUB_ENABLED}" = "true" ]; then
           args+=(--jupyterhub)
@@ -1151,6 +1257,12 @@ jobs:
         fi
         echo "ticket=$TICKET" >> $GITHUB_OUTPUT
         echo "Extracted ticket: $TICKET"
+
+    - name: Mask sensitive values in test artifacts
+      if: always()
+      working-directory: e2e-tests
+      run: |
+        bash .github/scripts/mask_sensitive_artifacts.sh result result-failed
 
     - name: Generate Excel summary
       if: always()
