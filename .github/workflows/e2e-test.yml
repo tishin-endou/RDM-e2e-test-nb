@@ -93,6 +93,20 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_autofill: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-metadata
+            display_name: "User Tests (Metadata)"
+            include_admin: false
+            skip_admin: true
+            skip_metadata: false
+            skip_autofill: false
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: false
             jupyterhub_enabled: false
@@ -154,6 +168,7 @@ jobs:
             include_admin: false
             skip_admin: true
             skip_metadata: false
+            skip_autofill: true
             skip_default_storage: true
             skip_login: true
             skip_130mb_upload: true
@@ -175,8 +190,8 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
-          - name: user-weko
-            display_name: "User Tests (WEKO)"
+          - name: user-weko-direct
+            display_name: "User Tests (WEKO Direct)"
             include_admin: true
             skip_admin: true
             skip_metadata: true
@@ -185,6 +200,20 @@ jobs:
             skip_130mb_upload: true
             minio_enabled: false
             weko_enabled: true
+            weko_test_mode: direct
+            jupyterhub_enabled: false
+            flowable_enabled: false
+          - name: user-weko-workflow
+            display_name: "User Tests (WEKO Workflow)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: true
+            weko_test_mode: workflow
             jupyterhub_enabled: false
             flowable_enabled: false
           - name: user-jupyterhub
@@ -199,8 +228,8 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: true
             flowable_enabled: false
-          - name: user-workflow
-            display_name: "User Tests (Flowable)"
+          - name: user-workflow-roles
+            display_name: "User Tests (Flowable Roles)"
             include_admin: true
             skip_admin: true
             skip_metadata: true
@@ -211,6 +240,33 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: true
+            workflow_test_mode: roles
+          - name: user-workflow-forms
+            display_name: "User Tests (Flowable Forms)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_test_mode: forms
+          - name: user-workflow-batch
+            display_name: "User Tests (Flowable Batch)"
+            include_admin: true
+            skip_admin: true
+            skip_metadata: true
+            skip_default_storage: true
+            skip_login: true
+            skip_130mb_upload: true
+            minio_enabled: false
+            weko_enabled: false
+            jupyterhub_enabled: false
+            flowable_enabled: true
+            workflow_test_mode: batch
             workflow_batch_project_count: 50
     name: E2E ${{ matrix.test-group.display_name }}
     env:
@@ -905,6 +961,7 @@ jobs:
         echo "WEKO_INSTITUTION_NAME=Virginia Tech [Test]" >> $GITHUB_ENV
         echo "WEKO_INDEX_NAME=Sample Index" >> $GITHUB_ENV
         echo "WEKO_DOCKER_COMPOSE_PATH=${{ github.workspace }}/weko/docker-compose2.yml" >> $GITHUB_ENV
+        echo "WEKO_TEST_MODE=${{ matrix.test-group.weko_test_mode || 'direct' }}" >> $GITHUB_ENV
         echo "IGNORE_HTTPS_ERRORS=true" >> $GITHUB_ENV
 
     - name: Verify RDM containers can connect to WEKO via HTTPS
@@ -931,6 +988,7 @@ jobs:
       run: |
         echo "GATEWAY_BASE_URL=http://192.168.168.167:8088/" >> $GITHUB_ENV
         echo "WORKFLOW_BATCH_PROJECT_COUNT=${{ matrix.test-group.workflow_batch_project_count || 50 }}" >> $GITHUB_ENV
+        echo "WORKFLOW_TEST_MODE=${{ matrix.test-group.workflow_test_mode }}" >> $GITHUB_ENV
 
     - name: Install TLJH stack
       if: env.JUPYTERHUB_ENABLED == 'true'
@@ -1069,8 +1127,9 @@ jobs:
         skip_admin: ${{ matrix.test-group.skip_admin }}
         skip_login: ${{ matrix.test-group.skip_login || false }}
         weko_enabled: ${{ matrix.test-group.weko_enabled == true }}
+        weko_test_mode: ${{ matrix.test-group.weko_test_mode || 'direct' }}
         enable_1gb_file_upload: false
-        skip_erad_completion_test: false
+        skip_autofill: ${{ matrix.test-group.skip_autofill == true }}
         storages_oauth: []
         EOF
 

@@ -46,7 +46,7 @@ class TestRunner:
         self.skip_admin = False
         self.skip_login = False
         self.enable_1gb_file_upload = False
-        self.skip_erad_completion_test = False
+        self.skip_autofill = False
         self.jupyterhub_enabled = False
         self.tljh_url = None
         self.tljh_username = None
@@ -62,6 +62,7 @@ class TestRunner:
         self.weko_index_name = None
         self.weko_docker_compose_path = None
         self.sword_mapping_id = 30002
+        self.weko_test_mode = 'direct'
         self.ignore_https_errors = False
         # S3CompatSigV4 specific parameters
         self.s3compatsigv4_enabled = False
@@ -85,6 +86,7 @@ class TestRunner:
         self.idp_username_other_institution = None
         self.idp_password_other_institution = None
         self.workflow_batch_project_count = 50
+        self.workflow_test_mode = None
         self.institution_name = None
         
         # Exclude notebooks
@@ -374,7 +376,7 @@ class TestRunner:
                     idp_username_2=getattr(self, 'idp_username_2', None),
                     idp_password_2=getattr(self, 'idp_password_2', None),
                     skip_failed_test=self.skip_failed_test,
-                    skip_erad_completion_test=self.skip_erad_completion_test,
+                    skip_autofill=self.skip_autofill,
                     exclude_notebooks=self.exclude_notebooks,
                 )
             )
@@ -474,6 +476,7 @@ class TestRunner:
                 weko_index_name=self.weko_index_name,
                 weko_docker_compose_path=self.weko_docker_compose_path,
                 sword_mapping_id=self.sword_mapping_id,
+                weko_test_mode=self.weko_test_mode,
                 ignore_https_errors=self.ignore_https_errors,
                 idp_name_2=getattr(self, 'idp_name_2', None),
                 idp_username_2=getattr(self, 'idp_username_2', None),
@@ -506,6 +509,7 @@ class TestRunner:
                 'idp_username_other_institution',
                 'idp_password_other_institution',
                 'institution_name',
+                'workflow_test_mode',
             ]
             if not getattr(self, name, None)
         ]
@@ -532,6 +536,7 @@ class TestRunner:
                 idp_password_other_institution=self.idp_password_other_institution,
                 batch_project_count=self.workflow_batch_project_count,
                 institution_name=self.institution_name,
+                workflow_test_mode=self.workflow_test_mode,
                 skip_failed_test=self.skip_failed_test,
                 exclude_notebooks=self.exclude_notebooks,
             )
