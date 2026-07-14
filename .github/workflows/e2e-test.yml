@@ -163,6 +163,31 @@ jobs:
             weko_enabled: false
             jupyterhub_enabled: false
             flowable_enabled: false
+          - name: migration-from-20250906-weko
+            display_name: "Migration Test from 20250906 (WEKO)"
+            include_admin: true
+            migration_from:
+              repository: "RCOSDP/RDM-osf.io"
+              commit: "4c007f2"
+              osf_image: "niicloudoperation/rdm-osf.io:20250906"
+              ember_image: "niicloudoperation/rdm-ember-osf-web:20250906"
+              cas_image: "niicloudoperation/rdm-cas-overlay:20250906"
+              mfr_image: "niicloudoperation/rdm-modular-file-renderer:20250906"
+              wb_image: "niicloudoperation/rdm-waterbutler:20250906"
+              initial_data_notebook: "取りまとめ-Migration前-20250906.ipynb"
+              post_migration_notebook: "取りまとめ-Migration後-20250906-weko.ipynb"
+            exclude_notebooks: |
+              テスト手順-WEKOアドオン-メタデータ送信-書誌情報.ipynb
+              テスト手順-WEKOアドオン-メタデータ送信-書誌情報＋根拠データ.ipynb
+            minio_enabled: false
+            weko_enabled: true
+            weko_test_mode: direct
+            skip_login: true
+            skip_default_storage: true
+            skip_metadata: true
+            skip_admin: true
+            jupyterhub_enabled: false
+            flowable_enabled: false
           - name: user-minio
             display_name: "User Tests (MinIO)"
             include_admin: false
@@ -1016,21 +1041,33 @@ jobs:
         
         # Create result directory (parent already exists from checkout)
         mkdir -p ../result
-        
+
+        # Build a typed parameter file via generate_ci_config.sh (single source of
+        # type resolution, e.g. ignore_https_errors -> bool) instead of -p strings.
+        cat > /tmp/post_base.config.yaml <<'EOF'
+        rdm_url: 'http://192.168.168.167:5000/'
+        admin_rdm_url: 'http://192.168.168.167:8001/'
+        idp_name_1: 'FakeCAS'
+        idp_username_1: 'testuser1@example.com'
+        idp_password_1: 'testpass123'
+        idp_name_2: 'FakeCAS'
+        idp_username_2: 'testuser2@example.com'
+        idp_password_2: 'testpass456'
+        transition_timeout: 60000
+        EOF
+
+        CONFIG_ARGS=(/tmp/post.config.yaml /tmp/post_base.config.yaml)
+        if [ "${WEKO_ENABLED}" = "true" ]; then
+          CONFIG_ARGS+=(--weko)
+        fi
+        ../.github/scripts/generate_ci_config.sh "${CONFIG_ARGS[@]}"
+
         # Execute the post-migration test notebook
         papermill ${{ matrix.test-group.migration_from.post_migration_notebook }} \
           ../result/${{ matrix.test-group.migration_from.post_migration_notebook }} \
-          -p rdm_url "http://192.168.168.167:5000/" \
-          -p admin_rdm_url "http://192.168.168.167:8001/" \
-          -p idp_name_1 "FakeCAS" \
-          -p idp_username_1 "testuser1@example.com" \
-          -p idp_password_1 "testpass123" \
-          -p idp_name_2 "FakeCAS" \
-          -p idp_username_2 "testuser2@example.com" \
-          -p idp_password_2 "testpass456" \
-          -p default_result_path "../result" \
-          -p transition_timeout 60000
-        
+          -f /tmp/post.config.yaml \
+          -p default_result_path "../result"
+
         echo "Post-migration tests completed"
 
     - name: Create test users and projects
