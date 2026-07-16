@@ -595,3 +595,53 @@ async def click_and_expect_alert(page, action, expected_message, transition_time
     await dialog.accept()
     await expect(page.locator('//*[contains(@class, "title-text")]//*[text() = "プロジェクトのWiki"]')).to_be_visible(timeout=transition_timeout)
 
+
+async def go_to_file_detail(page, filename_move, work_dir):
+    transition_timeout = 60000
+    await get_select_file_title_locator(page, filename_move).click(timeout=transition_timeout)
+    await expect(page.get_by_text(re.compile(r"^タイムスタンプ検証中"))).not_to_be_visible(timeout=transition_timeout * 5)
+    time.sleep(2)
+
+    # タイムスタンプエラーが発生した場合は、画面の証跡を記録した上で、「タイムスタンプを打つ」を押して、タイムスタンプエラーが解消するか確認すること
+    locator_timestamperror = page.get_by_text(re.compile(r"^タイムスタンプの検証"))
+    if await locator_timestamperror.is_visible():
+        print('timestamp error')
+        await page.locator(f'//a[contains(text(), "タイムスタンプを打つ")]').click(timeout=transition_timeout * 5)
+        await expect(page.get_by_text(re.compile(r"^タイムスタンプ検証中"))).not_to_be_visible(timeout=transition_timeout * 5)
+        await expect(page.get_by_text(re.compile(r"^タイムスタンプの検証"))).not_to_be_visible(timeout=transition_timeout * 5)
+
+    # 200 KiB より大きいファイルは詳細情報の表示はできない
+    filepath = os.path.join(work_dir, filename_move)
+    filesize = os.path.getsize(filepath)
+    large_filesize = 204800 # (200 * 1024)
+    if filesize > large_filesize:
+        print('file size > 200kB')
+        text = 'Text files larger than 200 KiB are not rendered. Please download the file to view.'
+        frame = page.frame_locator("iframe[src*='/render']")
+        alert_locator = frame.locator('//div[contains(@class, "alert-warning")]')
+        await alert_locator.wait_for(state="visible", timeout=transition_timeout * 5)
+        await expect(alert_locator).to_have_text(text, timeout=transition_timeout * 5)
+
+async def back_to_file_list_screen(page, provider, target_file_view):
+    transition_timeout = 60000
+    if target_file_view != 'file-tab':
+        await page.locator("a.project-title").click()
+    else:
+        await page.locator('#projectNavFiles a').click()
+    time.sleep(1)
+    await expect(page.locator('//a[text() = "アドオン"]')).to_be_visible(timeout=transition_timeout)
+    await expect(get_select_expanded_storage_title_locator(page, provider)).to_be_visible(timeout=transition_timeout)
+
+async def move_file_to_storage(page, provider, filename_move):
+    transition_timeout = 60000
+    await expect(get_select_file_title_locator(page, filename_move)).to_be_visible(timeout=transition_timeout * 2)
+    await get_select_file_extension_locator(page, filename_move).click()
+    source = get_select_file_draggable_locator(page, filename_move)
+    dest = get_select_storage_title_locator(page, provider)
+
+    await drag_and_drop(page, source, dest)
+    await expect(page.get_by_text(re.compile(r"^移動中"))).not_to_be_visible(timeout=transition_timeout * 5)
+    time.sleep(10)
+    await page.reload()
+    
+    await expect(get_select_file_title_locator(page, filename_move)).to_be_visible(timeout=transition_timeout * 5)
