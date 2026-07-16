@@ -1,8 +1,6 @@
 import os
 from django.utils import timezone
 from osf.models import OSFUser, Node, Institution
-import hashlib
-from osf.models.rdm_user_key import RdmUserKey
 
 WIKI_ENABLED = os.environ.get('WIKI_ENABLED', 'false').lower() == 'true'
 
@@ -51,7 +49,12 @@ test_users = [
 ]
 
 def create_rdmuserkey(user):
-    
+    # このスクリプトは `manage.py shell < file` で exec されるため、
+    # 関数内で使うシンボルは関数内で import する（トップレベル import は関数から見えない）
+    import hashlib
+    from django.utils import timezone
+    from osf.models.rdm_user_key import RdmUserKey
+
     PRIVATE_KEY_VALUE = 1
     PUBLIC_KEY_VALUE = 2
 
