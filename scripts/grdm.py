@@ -471,6 +471,130 @@ async def verify_property_folder_info(
     await expect(locator_path).to_have_text(folderpath)
 
     time.sleep(1)
+    
+async def open_wiki(page, wikiname, text, transition_timeout=60000):
+    await page.locator(f'//*[contains(@class, "title-text")]//a[text()="{wikiname}"]').click()
+    await expect(page.locator('//span[contains(@class, "title-text")]//b[contains(text(), "プロジェクトのWiki")]')).to_be_visible(timeout=transition_timeout)
+    await expect(page.locator('#pageName')).to_be_visible(timeout=transition_timeout)
+    await expect(page.locator('#pageName')).to_have_text(wikiname, timeout=transition_timeout)
+    await expect(page.locator('#wikiViewRender')).to_contain_text(text, timeout=transition_timeout)
+
+async def open_edit_wiki(page, transition_timeout=60000):
+    await page.locator('//div[@id="editWysiwyg"]//span[normalize-space()="編集"]').click()
+    await expect(page.locator('#mMenuBar')).to_be_visible(timeout=transition_timeout)
+    await expect(page.locator('#mEditor .ProseMirror[contenteditable="true"]')).to_be_visible(timeout=transition_timeout)
+
+async def select_text_range(page, text, transition_timeout=60000):
+    editor_locator = page.locator('#mEditor .ProseMirror[contenteditable="true"]')
+    await editor_locator.focus()
+    await editor_locator.evaluate("""
+    (el, targetText) => {
+        const p = Array.from(el.querySelectorAll('p')).find(par => par.innerText === targetText);
+        if (!p) return;
+        let textNode = p.firstChild;
+        if (textNode.nodeType !== Node.TEXT_NODE) {
+            textNode = textNode.firstChild;
+        }
+        const range = document.createRange();
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, textNode.length);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+    """, text)
+
+async def fill_text(page, text, transition_timeout=60000):
+    editor_locator = page.locator('#mEditor .ProseMirror[contenteditable="true"]')
+    await editor_locator.click()
+    await editor_locator.press("Enter")
+    await editor_locator.fill(text)
+    await expect(editor_locator).to_have_text(text, timeout=transition_timeout)
+
+async def click_wiki_menu_save(page, menu_list, transition_timeout=60000):
+    for menu in menu_list:
+        locator_by_id = page.locator(f'#{menu}')
+        if await locator_by_id.count() > 0:
+            await locator_by_id.click()
+            continue
+
+        locator_by_text = page.locator(f'#mMenuBar span:has-text("{menu}")')
+        if await locator_by_text.count() > 0:
+            await locator_by_text.click()
+            if menu == 'format_color_text':
+                await set_text_color(page.locator('.m-menu-color-input'), 255, 0, 0)  # R=255, G=0, B=0
+            if menu == 'table':
+                await fill_all_cells(page)
+            continue
+
+        raise ValueError(f"Menu item '{menu}' not found in wiki menu bar.")
+
+    await page.locator('//input[@type="submit" and @value="保存"]').click()
+    await expect(page.locator('//span[contains(@class, "title-text")]//b[contains(text(), "プロジェクトのWiki")]')).to_be_visible(timeout=transition_timeout)
+
+async def set_text_color(color_input, r, g, b):
+    r = max(0, min(255, r))
+    g = max(0, min(255, g))
+    b = max(0, min(255, b))
+    
+    # Convert RGB to HEX
+    hex_color = f"#{r:02x}{g:02x}{b:02x}"
+    # Fill value to input color
+    await color_input.fill(hex_color)
+
+async def fill_all_cells(page):
+    rows = await page.locator("table tbody tr").count()
+    for row_idx in range(rows):
+        row = page.locator("table tbody tr").nth(row_idx)
+        cells_count = await row.locator("th, td").count()
+        
+        for col_idx in range(cells_count):
+            text = f"row{row_idx}col{col_idx}"
+            cell = row.locator("th, td").nth(col_idx)
+
+            await cell.evaluate("""
+                (cell, text) => {
+                    let p = cell.querySelector('p');
+                    if (!p) {
+                        p = document.createElement('p');
+                        cell.appendChild(p);
+                    }
+                    p.innerHTML = text;
+                }
+            """, text)
+
+async def click_table_menu_save(page, row_index, col_index, table_menu, transition_timeout=60000):
+    table = page.locator('#mEditor .ProseMirror .tableWrapper table').first
+    first_cell = table.locator("tr").first.locator("th, td").first
+    await first_cell.click(force=True)
+    if table_menu == 'セルを削除':
+        last_cell = table.locator("tr").first.locator("th, td").last
+        await last_cell.click(modifiers=["Shift"])
+    for _ in range(row_index):
+        await page.keyboard.press("ArrowDown")
+    for _ in range(col_index):
+        if table_menu == 'セルを削除':
+            await page.keyboard.press("Shift+ArrowRight")
+        else:
+            await page.keyboard.press("ArrowRight")
+
+    await page.locator("#arrowDropDown").click()
+    await page.locator(f'.table-dropdown-item:has-text("{table_menu}")').click()
+    await page.locator('//input[@type="submit" and @value="保存"]').click()
+
+    view_locator = page.locator('#mView .ProseMirror[contenteditable="false"]')
+    await expect(page.locator('//span[contains(@class, "title-text")]//b[contains(text(), "プロジェクトのWiki")]')).to_be_visible(timeout=transition_timeout)
+
+async def click_and_expect_alert(page, action, expected_message, transition_timeout=60000):
+    async with page.expect_event("dialog", timeout=transition_timeout*5) as dialog_info:
+        await action()
+    dialog = await dialog_info.value
+    print(dialog.message)
+    print(expected_message)
+    assert dialog.message == expected_message
+    await dialog.accept()
+    await expect(page.locator('//*[contains(@class, "title-text")]//*[text() = "プロジェクトのWiki"]')).to_be_visible(timeout=transition_timeout)
+
 
 async def go_to_file_detail(page, filename_move, work_dir):
     transition_timeout = 60000
