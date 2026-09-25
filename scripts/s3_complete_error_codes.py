@@ -54,8 +54,22 @@ DEFINITIVE_REJECTION_CODES = frozenset({
 # S3 の最小パートサイズ。非最終パートがこれ未満だと EntityTooSmall になる。
 MIN_PART_SIZE = 5 * 1024 * 1024
 
+# 架空のアクセスキー。実在しない形式(AKIA + 16 文字)にしてある。
+# 出力には伏せ字ではなくこのまま出す(実在しないので伏せる必要がない)が、
+# redact() の正規表現に引っかかるため、印字時は _BOGUS_DISPLAY を使う。
+BOGUS_ACCESS_KEY = 'AKIA' + 'INVALIDINVALIDIN'
+_BOGUS_DISPLAY = '<架空のアクセスキー (AKIA + INVALID...)>'
+
 OUT_JSON = 'S-6-complete-error-codes.json'
 OUT_MD = 'S-6-complete-error-codes.md'
+
+# 本スクリプトの構成では実機採取できない 9 コードと、その理由。
+UNCOLLECTABLE_REASONS = {
+    'EntityTooLarge': (
+        '1 オブジェクト 5TiB 超(または 1 パート 5GiB 超)でしか返らない。'
+        '転送量・費用・所要時間の点で E2E では採取しない。'
+        'ガードは単体テストで担保する。'),
+}
 
 
 def classify(code):
@@ -111,6 +125,23 @@ CASES = [
         'complete_multipart_upload(Parts=[1])   # 2 回目 ← これを記録する',
         'delete_object(Key=<key>)   # 後始末(1 回目で実体ができている)',
     ]),
+    ('invalid-access-key-id', '架空のアクセスキーのクライアントで complete する', [
+        'create_multipart_upload(Key=<key>)   # 正しい資格情報で',
+        'upload_part(PartNumber=1, Body=<5MiB>)',
+        f'complete_multipart_upload(...)   # aws_access_key_id={_BOGUS_DISPLAY}',
+        'abort_multipart_upload()   # 後始末は正しい資格情報で',
+    ]),
+    ('signature-does-not-match', '正しいアクセスキー + 壊したシークレットで complete する', [
+        'create_multipart_upload(Key=<key>)   # 正しい資格情報で',
+        'upload_part(PartNumber=1, Body=<5MiB>)',
+        'complete_multipart_upload(...)   # secret の末尾 1 文字を別の文字に置換',
+        'abort_multipart_upload()   # 後始末は正しい資格情報で',
+    ]),
+    ('no-such-bucket', '存在しないバケットに対して complete する', [
+        'complete_multipart_upload(Bucket=<E2E_S3_BUCKET>-does-not-exist-<random>, '
+        'UploadId=<架空>, Parts=[1])',
+        '# 後始末なし(何も作っていない)',
+    ]),
 ]
 
 CASE_NOTES = {
@@ -122,6 +153,17 @@ CASE_NOTES = {
     'access-denied': (
         '事前にユーザーが「s3:PutObject を拒否するバケットポリシー」を付けた'
         'バケットを用意し、環境変数 E2E_S3_DENY_BUCKET で渡すこと。'),
+    'invalid-access-key-id': (
+        'UploadId とパートは正しい資格情報で作る。壊すのは complete の呼び出し'
+        'だけなので、「complete がこのコードで落ちたときオブジェクトは無い」と'
+        'いう表の主張をそのまま検証できる。'),
+    'signature-does-not-match': (
+        'シークレットの末尾 1 文字を別の文字に置換する。シークレットそのものは'
+        '出力にも例外文にも出さない(botocore は署名計算にしか使わない)。'),
+    'no-such-bucket': (
+        'NoSuchBucket と NoSuchUpload のどちらが先に返るかを記録する。'
+        'バケットが無ければ UploadId の存在は問えないので NoSuchBucket が'
+        '期待値だが、実機の順序は未確認。'),
 }
 
 
@@ -175,14 +217,41 @@ def print_plan(args, bucket, region, deny_bucket):
 
 
 # ---------------------------------------------------------------------------
-def _client(region):
+def _client(region, access_key=None, secret_key=None):
+    """S3 クライアント。資格情報を渡さなければ通常の解決順(環境変数など)。
+
+    access_key / secret_key を明示すると、その資格情報だけを使う
+    (ケース 8・9 用。壊した資格情報で complete を投げるため)。
+    """
     import boto3
     from botocore.config import Config
-    return boto3.client(
-        's3',
-        region_name=region,
-        config=Config(signature_version='s3v4', retries={'max_attempts': 3}),
-    )
+    kwargs = {
+        'region_name': region,
+        'config': Config(signature_version='s3v4', retries={'max_attempts': 1}),
+    }
+    if access_key is not None:
+        kwargs['aws_access_key_id'] = access_key
+        kwargs['aws_secret_access_key'] = secret_key
+        kwargs['aws_session_token'] = None
+    return boto3.client('s3', **kwargs)
+
+
+def _break_secret(secret):
+    """シークレットの末尾 1 文字を別の文字に置き換える。
+
+    元のシークレットは返り値に残らない…わけではない(末尾以外は同じ)ので、
+    この値は**絶対に出力しない**。署名計算にだけ渡す。
+    """
+    last = secret[-1]
+    return secret[:-1] + ('B' if last != 'B' else 'C')
+
+
+def _nonexistent_bucket(bucket):
+    """存在しないバケット名を作る。S3 の命名規則(63 文字以内・小文字)に収める。"""
+    import uuid
+    suffix = '-does-not-exist-' + uuid.uuid4().hex[:8]
+    base = bucket.lower()[:63 - len(suffix)]
+    return base + suffix
 
 
 def _observe(fn):
@@ -242,7 +311,8 @@ def _cleanup(client, bucket, key, upload_id, obs):
     return out
 
 
-def run_cases(client, bucket, deny_bucket, prefix, with_access_denied):
+def run_cases(client, bucket, deny_bucket, prefix, with_access_denied,
+              region='us-east-1', access_key=None, secret_key=None):
     body_5m = b'0' * MIN_PART_SIZE
     body_1m = b'0' * (1024 * 1024)
     results = []
@@ -361,6 +431,46 @@ def run_cases(client, bucket, deny_bucket, prefix, with_access_denied):
         extra['cleanup'] = type(e).__name__
     results.append(('completed-twice', second, extra))
 
+    # ---------------- 8. invalid-access-key-id
+    # UploadId とパートは正しい資格情報で作り、complete だけ架空のキーで投げる。
+    key = key_for('invalid-access-key-id')
+    up = client.create_multipart_upload(Bucket=bucket, Key=key)['UploadId']
+    etag = client.upload_part(Bucket=bucket, Key=key, UploadId=up,
+                              PartNumber=1, Body=body_5m)['ETag']
+    bad_key_client = _client(region, BOGUS_ACCESS_KEY, 'bogus-secret-not-a-real-one')
+    obs = _observe(lambda: bad_key_client.complete_multipart_upload(
+        Bucket=bucket, Key=key, UploadId=up,
+        MultipartUpload={'Parts': [{'PartNumber': 1, 'ETag': etag}]}))
+    results.append(('invalid-access-key-id', obs,
+                    _cleanup(client, bucket, key, up, obs)))
+
+    # ---------------- 9. signature-does-not-match
+    if secret_key:
+        key = key_for('signature-does-not-match')
+        up = client.create_multipart_upload(Bucket=bucket, Key=key)['UploadId']
+        etag = client.upload_part(Bucket=bucket, Key=key, UploadId=up,
+                                  PartNumber=1, Body=body_5m)['ETag']
+        bad_sig_client = _client(region, access_key, _break_secret(secret_key))
+        obs = _observe(lambda: bad_sig_client.complete_multipart_upload(
+            Bucket=bucket, Key=key, UploadId=up,
+            MultipartUpload={'Parts': [{'PartNumber': 1, 'ETag': etag}]}))
+        results.append(('signature-does-not-match', obs,
+                        _cleanup(client, bucket, key, up, obs)))
+
+    # ---------------- 10. no-such-bucket
+    # 何も作らない。存在しないバケットに架空の UploadId で complete を投げる。
+    ghost = _nonexistent_bucket(bucket)
+    obs = _observe(lambda: client.complete_multipart_upload(
+        Bucket=ghost, Key=key_for('no-such-bucket'),
+        UploadId='ZmFrZS11cGxvYWQtaWQtZm9yLXMtNg',
+        MultipartUpload={'Parts': [
+            {'PartNumber': 1, 'ETag': '"d41d8cd98f00b204e9800998ecf8427e"'}]}))
+    results.append(('no-such-bucket', obs, {
+        'bucket': ghost,
+        'note': 'NoSuchBucket と NoSuchUpload のどちらが先に返るかを見る。'
+                '後始末は不要(何も作っていない)。',
+    }))
+
     return results
 
 
@@ -393,6 +503,7 @@ def build_report(results, bucket, region, started_at, skipped):
         'skipped_cases': skipped,
         'observed_codes': sorted(observed),
         'uncollected_table_codes': uncollected,
+        'uncollectable_by_design': UNCOLLECTABLE_REASONS,
         'codes_not_in_table': unlisted,
         'note': ('コード側(DEFINITIVE_REJECTION_CODES)は変更していない。'
                  '表に無いコードは WaterButler の既定どおり UNKNOWN として扱う'
@@ -439,9 +550,12 @@ def build_markdown(report):
         lines.append('| `{}` | 採取(**表に無い**) | UNKNOWN(既定) |'.format(code))
 
     if report['uncollected_table_codes']:
-        lines += ['', '未採取のコード(本スクリプトの 7 ケースでは出せないもの):', '']
+        lines += ['', '未採取のコードと理由:', '']
         for code in report['uncollected_table_codes']:
-            lines.append(f'- `{code}`')
+            reason = UNCOLLECTABLE_REASONS.get(
+                code, '本スクリプトのケースでは出せなかった('
+                      '該当ケースがスキップされたか、実装差で別のコードが返った)。')
+            lines.append(f'- `{code}` — {reason}')
 
     if report['skipped_cases']:
         lines += ['', '## スキップしたケース', '']
@@ -508,7 +622,9 @@ def main(argv=None):
     started_at = datetime.now().isoformat()
     client = _client(region)
     results = run_cases(client, bucket, deny_bucket, args.prefix,
-                        args.with_access_denied)
+                        args.with_access_denied,
+                        region=region, access_key=access_key,
+                        secret_key=secret_key)
 
     report = build_report(results, bucket, region, started_at, skipped)
     text_json = redact(json.dumps(report, indent=2, ensure_ascii=False))
