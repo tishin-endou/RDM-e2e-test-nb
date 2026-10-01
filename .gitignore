@@ -22,12 +22,16 @@ venv/
 *~
 .DS_Store
 
+# Claude Code / Claude in Cowork local settings (machine-specific, not for repo)
+.claude/
+
 # Test outputs and reports
 *.log
 *.har
 last-screenshots/
 test-results/
 reports/
+evidence/
 
 # Config files with secrets
 *.config.yaml
